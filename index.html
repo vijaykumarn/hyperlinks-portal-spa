@@ -1,12 +1,224 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hyperlinks Portal SPA</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/scripts/main.ts"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <!-- App Title -->
+  <title>URL Shortener - Shorten, Share, Track</title>
+  
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Create short, memorable links for your long URLs. Track clicks, manage your links, and get detailed analytics." />
+  <meta name="keywords" content="url shortener, link shortener, short links, analytics, tracking" />
+  <meta name="author" content="URL Shortener App" />
+  
+  <!-- Open Graph Meta Tags -->
+  <meta property="og:title" content="URL Shortener - Shorten, Share, Track" />
+  <meta property="og:description" content="Create short, memorable links for your long URLs with detailed analytics." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://yourapp.com" />
+  <meta property="og:image" content="/og-image.png" />
+  
+  <!-- Twitter Card Meta Tags -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="URL Shortener" />
+  <meta name="twitter:description" content="Create short, memorable links with analytics." />
+  <meta name="twitter:image" content="/twitter-image.png" />
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  
+  <!-- Theme Color -->
+  <meta name="theme-color" content="#3b82f6" />
+  
+  <!-- Manifest for PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  
+  <!-- Preconnect to external domains -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  
+  <!-- Fonts (if using Google Fonts) -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <!-- Critical CSS for loading state -->
+  <style>
+    /* Critical CSS for initial loading */
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f9fafb;
+      color: #1f2937;
+    }
+    
+    #app {
+      min-height: 100vh;
+    }
+    
+    /* Initial loading animation */
+    .initial-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
+    }
+    
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid #e5e7eb;
+      border-top: 3px solid #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+      margin-top: 16px;
+      color: #6b7280;
+      font-size: 16px;
+    }
+    
+    /* Error state styles */
+    .error-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .error-content {
+      text-align: center;
+      max-width: 500px;
+      background: white;
+      padding: 40px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Offline indicator */
+    body.offline::before {
+      content: "You're offline. Some features may not work.";
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #f59e0b;
+      color: white;
+      text-align: center;
+      padding: 8px;
+      font-size: 14px;
+      z-index: 1000;
+    }
+    
+    body.offline #app {
+      margin-top: 40px;
+    }
+    
+    /* Focus styles for accessibility */
+    *:focus {
+      outline: 2px solid #3b82f6;
+      outline-offset: 2px;
+    }
+    
+    /* Smooth transitions */
+    * {
+      transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+    }
+  </style>
+  
+  <!-- Prevent FOUC (Flash of Unstyled Content) -->
+  <script>
+    // Add no-js class initially, remove when JS loads
+    document.documentElement.classList.add('no-js');
+    
+    // Remove no-js class when JavaScript is available
+    document.addEventListener('DOMContentLoaded', function() {
+      document.documentElement.classList.remove('no-js');
+    });
+    
+    // Basic error handling before app loads
+    window.addEventListener('error', function(event) {
+      console.error('Global error before app initialization:', event.error);
+    });
+    
+    // Handle unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(event) {
+      console.error('Unhandled promise rejection before app initialization:', event.reason);
+    });
+  </script>
+</head>
+
+<body>
+  <!-- App root element -->
+  <div id="app">
+    <!-- Initial loading state -->
+    <div class="initial-loading">
+      <div>
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading URL Shortener...</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Noscript fallback -->
+  <noscript>
+    <div class="error-container">
+      <div class="error-content">
+        <h1>JavaScript Required</h1>
+        <p>This application requires JavaScript to function properly. Please enable JavaScript in your browser and refresh the page.</p>
+        <button onclick="window.location.reload()">Refresh Page</button>
+      </div>
+    </div>
+  </noscript>
+  
+  <!-- Service Worker registration (optional) -->
+  <script>
+    // Register service worker for PWA capabilities
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful');
+          })
+          .catch(function(error) {
+            console.log('ServiceWorker registration failed: ', error);
+          });
+      });
+    }
+  </script>
+  
+  <!-- Main application script -->
+  <script type="module" src="/src/scripts/main.ts"></script>
+  
+  <!-- Performance monitoring (optional) -->
+  <script>
+    // Basic performance monitoring
+    window.addEventListener('load', function() {
+      // Log performance metrics in development
+      if (window.location.hostname === 'localhost') {
+        setTimeout(function() {
+          const perfData = performance.getEntriesByType('navigation')[0];
+          console.log('Page load performance:', {
+            'DOM Content Loaded': perfData.domContentLoadedEventEnd - perfData.domContentLoadedEventStart,
+            'Page Load Complete': perfData.loadEventEnd - perfData.loadEventStart,
+            'Total Load Time': perfData.loadEventEnd - perfData.fetchStart
+          });
+        }, 0);
+      }
+    });
+  </script>
+</body>
 </html>
