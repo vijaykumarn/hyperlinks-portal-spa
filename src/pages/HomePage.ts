@@ -3,6 +3,7 @@
 import type { PageComponent } from '../types/app';
 import type { RouteContext } from '../types/router';
 import type { DOMManager } from '../types/app';
+import { MockApiService } from '../services/mockApi';
 
 /**
  * Home page component for the URL shortener
@@ -10,9 +11,11 @@ import type { DOMManager } from '../types/app';
 export class HomePage implements PageComponent {
   private domManager: DOMManager;
   private eventListeners: Array<() => void> = [];
+  private mockApi: MockApiService;
 
   constructor(domManager: DOMManager) {
     this.domManager = domManager;
+    this.mockApi = MockApiService.getInstance();
   }
 
   /**
@@ -152,6 +155,25 @@ export class HomePage implements PageComponent {
               </p>
             </div>
           </div>
+
+          <!-- Demo Section -->
+          <div class="bg-white rounded-lg shadow-sm p-6 mb-16">
+            <h3 class="text-xl font-semibold text-gray-900 mb-4">Try these demo links:</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="text-center p-4 border border-gray-200 rounded">
+                <p class="font-mono text-blue-600 mb-2">/u/abc123</p>
+                <p class="text-sm text-gray-600">→ google.com</p>
+              </div>
+              <div class="text-center p-4 border border-gray-200 rounded">
+                <p class="font-mono text-blue-600 mb-2">/u/xyz789</p>
+                <p class="text-sm text-gray-600">→ github.com</p>
+              </div>
+              <div class="text-center p-4 border border-gray-200 rounded">
+                <p class="font-mono text-blue-600 mb-2">/u/test</p>
+                <p class="text-sm text-gray-600">→ example.com</p>
+              </div>
+            </div>
+          </div>
         </main>
 
         <!-- Login Modal -->
@@ -173,8 +195,10 @@ export class HomePage implements PageComponent {
                   type="email"
                   id="email"
                   required
+                  value="john@example.com"
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
+                <p class="text-xs text-gray-500 mt-1">Demo email pre-filled</p>
               </div>
               
               <div class="mb-6">
@@ -185,8 +209,10 @@ export class HomePage implements PageComponent {
                   type="password"
                   id="password"
                   required
+                  value="password"
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
+                <p class="text-xs text-gray-500 mt-1">Demo password: "password"</p>
               </div>
               
               <button
@@ -199,10 +225,7 @@ export class HomePage implements PageComponent {
             </form>
             
             <p class="text-center text-sm text-gray-600 mt-4">
-              Don't have an account? 
-              <button id="signup-modal-link" class="text-blue-600 hover:text-blue-700 underline">
-                Sign up here
-              </button>
+              Demo mode - use the pre-filled credentials to test the application.
             </p>
           </div>
         </div>
@@ -297,7 +320,7 @@ export class HomePage implements PageComponent {
   }
 
   /**
-   * Handle URL shortening (guest mode)
+   * Handle URL shortening using mock API
    */
   private async handleUrlShorten(url: string): Promise<void> {
     if (!url || !this.isValidUrl(url)) {
@@ -313,21 +336,23 @@ export class HomePage implements PageComponent {
       shortenBtn.disabled = true;
       shortenBtn.textContent = 'Shortening...';
 
-      // Simulate API call (replace with actual API integration)
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Use mock API to shorten URL
+      const result = await this.mockApi.shortenUrl(url);
       
-      const shortUrl = `https://short.ly/${this.generateShortCode()}`;
-      
-      if (shortUrlInput) {
-        shortUrlInput.value = shortUrl;
-      }
-      
-      if (resultArea) {
-        resultArea.classList.remove('hidden');
-      }
+      if (result.success && result.fullShortUrl) {
+        if (shortUrlInput) {
+          shortUrlInput.value = result.fullShortUrl;
+        }
+        
+        if (resultArea) {
+          resultArea.classList.remove('hidden');
+        }
 
-      // Setup copy functionality
-      this.setupCopyButton(shortUrl);
+        // Setup copy functionality
+        this.setupCopyButton(result.fullShortUrl);
+      } else {
+        alert(result.message || 'Failed to shorten URL');
+      }
 
     } catch (error) {
       console.error('Error shortening URL:', error);
@@ -357,6 +382,18 @@ export class HomePage implements PageComponent {
           }, 2000);
         } catch (error) {
           console.error('Failed to copy:', error);
+          // Fallback for older browsers
+          const textArea = document.createElement('textarea');
+          textArea.value = url;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          
+          newCopyBtn.textContent = 'Copied!';
+          setTimeout(() => {
+            newCopyBtn.textContent = 'Copy';
+          }, 2000);
         }
       });
       this.eventListeners.push(listener);
@@ -364,7 +401,7 @@ export class HomePage implements PageComponent {
   }
 
   /**
-   * Handle login form submission
+   * Handle login form submission using mock API
    */
   private async handleLogin(): Promise<void> {
     const emailInput = document.getElementById('email') as HTMLInputElement;
@@ -378,27 +415,26 @@ export class HomePage implements PageComponent {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Logging in...';
 
-      // Simulate login API call (replace with actual API integration)
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Use mock API for login
+      const result = await this.mockApi.login(email, password);
 
-      // Simulate successful login
-      const sessionData = {
-        user: {
-          id: '1',
-          email: email,
-          name: 'John Doe',
-          role: 'user'
-        },
-        token: 'fake-jwt-token',
-        expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
-      };
+      if (result.success && result.user && result.token) {
+        // Create session data
+        const sessionData = {
+          user: result.user,
+          token: result.token,
+          expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+        };
 
-      sessionStorage.setItem('session', JSON.stringify(sessionData));
+        sessionStorage.setItem('session', JSON.stringify(sessionData));
 
-      // Redirect to dashboard
-      const router = (window as any).__APP__?.getInstance()?.getRouter();
-      if (router) {
-        router.push('/dashboard');
+        // Redirect to dashboard
+        const router = (window as any).__APP__?.getInstance()?.getRouter();
+        if (router) {
+          router.push('/dashboard');
+        }
+      } else {
+        alert(result.message || 'Login failed. Please try again.');
       }
 
     } catch (error) {
@@ -420,18 +456,6 @@ export class HomePage implements PageComponent {
     } catch {
       return false;
     }
-  }
-
-  /**
-   * Generate random short code
-   */
-  private generateShortCode(): string {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
   }
 
   /**
