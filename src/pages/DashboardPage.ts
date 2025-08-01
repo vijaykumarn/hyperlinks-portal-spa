@@ -1,24 +1,24 @@
 // src/pages/DashboardPage.ts - FIXED VERSION
 
-import type { PageComponent } from '../types/app';
+import type { PageComponent, DOMManager } from '../types/app';
 import type { RouteContext } from '../types/router';
-import type { DOMManager } from '../types/app';
-import { SessionService } from '../services/SessionService'; // Added import
+import { SessionService } from '../services/SessionService';
+import { ApiService } from '../services/ApiService';
 
 export class DashboardPage implements PageComponent {
   private domManager: DOMManager;
   private eventListeners: Array<() => void> = [];
-  private sessionService: SessionService; // Added
+  private sessionService: SessionService;
+  private apiService: ApiService;
 
   constructor(domManager: DOMManager) {
     this.domManager = domManager;
-    this.sessionService = SessionService.getInstance(); // Added
+    this.sessionService = SessionService.getInstance();
+    this.apiService = ApiService.getInstance();
   }
 
-  public async beforeEnter(context: RouteContext): Promise<boolean> {
-    // FIXED: Use SessionService instead of direct sessionStorage
+  public async beforeEnter(_context: RouteContext): Promise<boolean> {
     if (!this.sessionService.isAuthenticated()) {
-      // Redirect to home if not authenticated
       const router = (window as any).__APP__?.getInstance()?.getRouter();
       if (router) {
         router.replace('/');
@@ -28,8 +28,7 @@ export class DashboardPage implements PageComponent {
     return true;
   }
 
-  public async render(context: RouteContext): Promise<void> {
-    // Get current user info for personalized greeting
+  public async render(_context: RouteContext): Promise<void> {
     const user = this.sessionService.getCurrentUser();
     const userName = user?.name || 'User';
 
@@ -151,17 +150,13 @@ export class DashboardPage implements PageComponent {
 
   private async handleLogout(): Promise<void> {
     try {
-      // FIXED: Use SessionService instead of direct sessionStorage manipulation  
+      await this.apiService.logout();
+    } catch (error) {
+      console.error('Logout API error:', error);
+    } finally {
+      // Always clear session, even if API call fails
       this.sessionService.clearSession();
       
-      const router = (window as any).__APP__?.getInstance()?.getRouter();
-      if (router) {
-        router.replace('/');
-      }
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Force logout even if API call fails
-      this.sessionService.clearSession();
       const router = (window as any).__APP__?.getInstance()?.getRouter();
       if (router) {
         router.replace('/');

@@ -1,4 +1,4 @@
-// src/pages/NotFoundPage.ts
+// src/pages/NotFoundPage.ts - FIXED VERSION
 
 import type { PageComponent, DOMManager } from "../types/app";
 import type { RouteContext } from "../types/router";
@@ -10,7 +10,7 @@ export class NotFoundPage implements PageComponent {
     this.domManager = domManager;
   }
 
-  public async render(context: RouteContext): Promise<void> {
+  public async render(_context: RouteContext): Promise<void> {
     const html = `
       <div class="min-h-screen bg-gray-50 flex items-center justify-center">
         <div class="text-center">
@@ -38,7 +38,5 @@ export class NotFoundPage implements PageComponent {
     }
   }
 
-  public cleanup(): void {
-    // No cleanup needed for this simple page
-  }
+  public cleanup(): void {}
 }

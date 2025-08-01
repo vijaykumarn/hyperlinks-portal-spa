@@ -1,4 +1,4 @@
-// src/core/router/guards.ts
+// src/core/router/guards.ts - FIXED VERSION
 
 import type { RouteGuard } from '../../types/router';
 import { SessionService } from '../../services/SessionService';
@@ -11,10 +11,9 @@ function getSessionService(): SessionService {
 }
 
 /**
- * Authentication guard - checks if user is authenticated via session data
- * NO JWT tokens - uses HttpOnly cookie + session data pattern
+ * Authentication guard - checks if user is authenticated
  */
-export const authGuard: RouteGuard = async (context) => {
+export const authGuard: RouteGuard = async (_context) => {
   const sessionService = getSessionService();
   
   if (!sessionService.isAuthenticated()) {
@@ -28,9 +27,8 @@ export const authGuard: RouteGuard = async (context) => {
 
 /**
  * Guest guard - ensures only unauthenticated users can access certain routes
- * Redirects to dashboard if already authenticated
  */
-export const guestGuard: RouteGuard = async (context) => {
+export const guestGuard: RouteGuard = async (_context) => {
   const sessionService = getSessionService();
   
   if (sessionService.isAuthenticated()) {
@@ -45,7 +43,7 @@ export const guestGuard: RouteGuard = async (context) => {
 /**
  * Admin guard - checks if user has admin privileges
  */
-export const adminGuard: RouteGuard = async (context) => {
+export const adminGuard: RouteGuard = async (_context) => {
   const sessionService = getSessionService();
   
   if (!sessionService.isAuthenticated()) {
@@ -66,7 +64,7 @@ export const adminGuard: RouteGuard = async (context) => {
 };
 
 /**
- * Route meta guard - checks route meta requirements using session data
+ * Route meta guard - checks route meta requirements
  */
 export const metaGuard: RouteGuard = async (context) => {
   const { to } = context;
@@ -101,7 +99,6 @@ export const metaGuard: RouteGuard = async (context) => {
 
 /**
  * Logging guard - logs navigation for debugging/analytics
- * Now includes secure session info
  */
 export const loggingGuard: RouteGuard = async (context) => {
   if (process.env.NODE_ENV === 'development') {
@@ -123,9 +120,8 @@ export const loggingGuard: RouteGuard = async (context) => {
 
 /**
  * Session validation guard - ensures session is not stale
- * Useful for sensitive operations
  */
-export const sessionValidationGuard: RouteGuard = async (context) => {
+export const sessionValidationGuard: RouteGuard = async (_context) => {
   const sessionService = getSessionService();
   
   if (!sessionService.isAuthenticated()) {
@@ -135,8 +131,6 @@ export const sessionValidationGuard: RouteGuard = async (context) => {
   // Check if session is stale (older than 30 minutes)
   if (sessionService.isSessionStale(30)) {
     console.log('⚠️ Session is stale, but allowing access (will validate on next API call)');
-    // Note: We don't block here because the next API call will validate the session
-    // This provides better UX than blocking on potentially valid sessions
   }
   
   return true;
@@ -149,7 +143,7 @@ export const rateLimitGuard: RouteGuard = (() => {
   let lastNavigation = 0;
   const minInterval = 100; // 100ms minimum between navigations
   
-  return async (context) => {
+  return async (_context) => {
     const now = Date.now();
     
     if (now - lastNavigation < minInterval) {
@@ -165,7 +159,7 @@ export const rateLimitGuard: RouteGuard = (() => {
 /**
  * Development guard - only allows access in development mode
  */
-export const devOnlyGuard: RouteGuard = async (context) => {
+export const devOnlyGuard: RouteGuard = async (_context) => {
   if (process.env.NODE_ENV !== 'development') {
     console.log('🔒 DevOnlyGuard: Not in development mode, redirecting to /');
     return '/';
@@ -177,13 +171,11 @@ export const devOnlyGuard: RouteGuard = async (context) => {
 /**
  * Maintenance guard - blocks access during maintenance
  */
-export const maintenanceGuard: RouteGuard = async (context) => {
-  // You could check a feature flag or environment variable here
+export const maintenanceGuard: RouteGuard = async (_context) => {
   const isMaintenanceMode = false; // Configure this based on your needs
   
   if (isMaintenanceMode) {
     console.log('🚧 MaintenanceGuard: Site in maintenance mode');
-    // You could redirect to a maintenance page
     return '/maintenance';
   }
   

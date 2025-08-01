@@ -1,30 +1,15 @@
 // src/services/SessionService.ts
 
 import { StateManager } from '../core/state/StateManager';
-import type { UserData } from '../core/state/types';
+import type { UserData, ApiResponse } from '../types/app';
 
 /**
- * API Response interface with optional session data
- */
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  session?: {
-    user: UserData;
-    isAuthenticated: boolean;
-    expiresAt?: number;
-  };
-}
-
-/**
- * Secure session management service
- * NO JWT tokens - works with HttpOnly cookies + session data
+ * Session management service - HttpOnly cookies only
+ * No JWT tokens, no mock API integration
  */
 export class SessionService {
   private static instance: SessionService;
   private stateManager: StateManager;
-  private storageEventListener: () => void;
 
   private constructor() {
     this.stateManager = StateManager.getInstance();
@@ -45,107 +30,74 @@ export class SessionService {
    * Setup cross-tab session synchronization
    */
   private setupStorageListener(): void {
-    this.storageEventListener = () => {
-      window.addEventListener('storage', (event) => {
-        if (event.key === 'session') {
-          if (!event.newValue) {
-            // Session was cleared in another tab
-            console.log('🔄 Session cleared in another tab');
-            this.clearSession();
-          } else {
-            // Session was updated in another tab
-            try {
-              const sessionData = JSON.parse(event.newValue);
-              if (sessionData.user) {
-                console.log('🔄 Session updated from another tab');
-                this.setSession(sessionData.user, true);
-              }
-            } catch (error) {
-              console.warn('Failed to parse session data from storage event:', error);
-            }
-          }
-        }
-      });
-    };
-    
-    this.storageEventListener();
+    window.addEventListener('storage', (event) => {
+      if (event.key === 'session_cleared') {
+        // Session was cleared in another tab
+        console.log('🔄 Session cleared in another tab');
+        this.clearSessionState();
+      }
+    });
   }
-
-/**
- * Update session from API response - DEBUG VERSION
- * This is called automatically by the HTTP client
- */
-public updateFromApiResponse<T>(response: ApiResponse<T>): void {
-  console.log('🔄 SessionService: updateFromApiResponse called');
-  console.log('🔄 SessionService: Response object:', response);
-  
-  if (response.session) {
-    console.log('🔄 SessionService: Found session data:', response.session);
-    console.log('🔄 SessionService: Session isAuthenticated:', response.session.isAuthenticated);
-    console.log('🔄 SessionService: Session user:', response.session.user);
-    
-    if (response.session.isAuthenticated && response.session.user) {
-      console.log('🔄 SessionService: Calling setSession with user:', response.session.user.email);
-      
-      // Update session with fresh data from backend
-      this.setSession(response.session.user, true);
-      
-      console.log('✅ SessionService: Session updated from API response');
-      
-      // Verify the update worked
-      const currentState = this.stateManager.getSessionState();
-      console.log('🔄 SessionService: Current session state after update:', currentState);
-      
-    } else {
-      console.log('🔒 SessionService: Session data indicates not authenticated');
-      this.clearSession();
-    }
-  } else {
-    console.log('⚠️ SessionService: No session data in API response');
-  }
-}
 
   /**
-   * Set user session (after successful login or API update)
+   * Set user session (after successful login)
    */
-  public setSession(user: UserData, isAuthenticated: boolean = true): void {
+  public setSession(user: UserData): void {
     this.stateManager.dispatch({
       type: 'SESSION_SET',
-      payload: { user, isAuthenticated }
+      payload: { user, isAuthenticated: true }
     });
+
+    // Store minimal session info for cross-tab sync
+    try {
+      sessionStorage.setItem('session', JSON.stringify({
+        user,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      console.warn('Failed to store session data:', error);
+    }
 
     console.log('👤 Session set for user:', user.email);
   }
 
-/**
- * Clear session (logout or auth failure) - FIXED VERSION
- */
-public clearSession(): void {
-  console.log('🔒 SessionService: Clearing session...');
-  
-  // Clear state manager
-  this.stateManager.dispatch({ type: 'SESSION_CLEAR' });
-  
-  // EXPLICIT localStorage cleanup - don't rely on StateManager
-  try {
-    // Clear session data
-    sessionStorage.removeItem('session');
+  /**
+   * Clear session (logout or auth failure)
+   */
+  public clearSession(): void {
+    console.log('🔒 SessionService: Clearing session...');
     
-    // Clear mock session data (if using mock API)
-    localStorage.removeItem('mock_session_id');
-    localStorage.removeItem('mock_sessions');
+    // Clear state
+    this.clearSessionState();
     
-    console.log('🧹 SessionService: localStorage cleaned up');
-  } catch (error) {
-    console.warn('⚠️ SessionService: Failed to clear localStorage:', error);
-  }
-  
-  // Also clear user-specific data
-  this.stateManager.dispatch({ type: 'URLS_SET_USER_URLS', payload: [] });
-  this.stateManager.dispatch({ type: 'ANALYTICS_SET_DATA', payload: null });
+    // Notify other tabs
+    try {
+      localStorage.setItem('session_cleared', Date.now().toString());
+      setTimeout(() => localStorage.removeItem('session_cleared'), 1000);
+    } catch (error) {
+      console.warn('Failed to notify other tabs:', error);
+    }
 
-  console.log('🔒 SessionService: Session cleared completely');
-}
+    console.log('🔒 SessionService: Session cleared');
+  }
+
+  /**
+   * Clear only the session state (internal)
+   */
+  private clearSessionState(): void {
+    this.stateManager.dispatch({ type: 'SESSION_CLEAR' });
+    
+    // Clear session storage
+    try {
+      sessionStorage.removeItem('session');
+    } catch (error) {
+      console.warn('Failed to clear session storage:', error);
+    }
+
+    // Clear user-specific data
+    this.stateManager.dispatch({ type: 'URLS_SET_USER_URLS', payload: [] });
+    this.stateManager.dispatch({ type: 'ANALYTICS_SET_DATA', payload: null });
+  }
 
   /**
    * Check if user is currently authenticated
@@ -189,14 +141,40 @@ public clearSession(): void {
         }
       });
 
-      // Redirect to home if not already there
+      // Redirect to home if on protected route
       const currentPath = window.location.pathname;
       if (currentPath.startsWith('/dashboard')) {
         window.history.replaceState(null, '', '/');
-        // Trigger router to handle the navigation
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
     }
+  }
+
+  /**
+   * Load session from storage on app start
+   */
+  public loadPersistedSession(): boolean {
+    try {
+      const sessionData = sessionStorage.getItem('session');
+      if (sessionData) {
+        const session = JSON.parse(sessionData);
+        if (session.user && session.timestamp) {
+          // Check if session is not too old (24 hours)
+          const ageHours = (Date.now() - session.timestamp) / (1000 * 60 * 60);
+          if (ageHours < 24) {
+            this.setSession(session.user);
+            return true;
+          } else {
+            // Session expired
+            sessionStorage.removeItem('session');
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load persisted session:', error);
+      sessionStorage.removeItem('session');
+    }
+    return false;
   }
 
   /**
@@ -243,11 +221,25 @@ public clearSession(): void {
   }
 
   /**
-   * Destroy the service (cleanup)
+   * Process API response that might contain user data
    */
-  public destroy(): void {
-    if (this.storageEventListener) {
-      window.removeEventListener('storage', this.storageEventListener);
+  public processApiResponse<T>(response: ApiResponse<T>): void {
+    // If response contains user data, update session
+    if (response.success && response.data && typeof response.data === 'object') {
+      const data = response.data as any;
+      if (data.user && data.user.id) {
+        this.setSession(data.user);
+      }
+    }
+
+    // Handle authentication errors
+    if (!response.success && response.error) {
+      if (response.error.includes('401') || response.error.includes('403')) {
+        this.handleAuthError({
+          status: response.error.includes('401') ? 401 : 403,
+          message: response.error
+        });
+      }
     }
   }
 }

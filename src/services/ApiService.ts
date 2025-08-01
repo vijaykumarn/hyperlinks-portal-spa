@@ -1,35 +1,148 @@
-// src/services/ApiService.ts - CLEAN VERSION using generic HttpClient
+// src/services/ApiService.ts
 
-import { HttpClient } from './HttpClient';
-import type { ApiResponse } from './SessionService';
-import type { UrlData, AnalyticsData } from '../state/types';
+import type { ApiResponse, UserData, UrlData, AnalyticsData } from '../types/app';
 
 /**
- * API Service - Business logic layer over HttpClient
- * HttpClient handles mock vs real API transparency
+ * HTTP Client for real API communication
+ * Handles authentication via HttpOnly cookies
+ */
+class HttpClient {
+  private baseUrl: string;
+  private defaultTimeout: number = 10000;
+
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  }
+
+  /**
+   * Generic request method
+   */
+  private async request<T>(
+    method: string,
+    endpoint: string,
+    data?: any,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    const url = `${this.baseUrl}${endpoint}`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.defaultTimeout);
+
+    try {
+      const requestInit: RequestInit = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Type': 'spa',
+          ...options.headers
+        },
+        credentials: 'include', // Include HttpOnly cookies
+        signal: controller.signal,
+        ...options
+      };
+
+      if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
+        requestInit.body = JSON.stringify(data);
+      }
+
+      const response = await fetch(url, requestInit);
+      clearTimeout(timeoutId);
+
+      return await this.parseResponse<T>(response);
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          success: false,
+          error: 'Request timeout'
+        };
+      }
+
+      console.error(`❌ API ${method} ${endpoint} failed:`, error);
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Network error'
+      };
+    }
+  }
+
+  /**
+   * Parse fetch response
+   */
+  private async parseResponse<T>(response: Response): Promise<ApiResponse<T>> {
+    try {
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || data.message || `HTTP ${response.status}`,
+          message: data.message
+        };
+      }
+
+      return {
+        success: true,
+        data: data.data || data,
+        message: data.message
+      };
+
+    } catch (parseError) {
+      return {
+        success: false,
+        error: `Failed to parse response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  // HTTP method wrappers
+  public async get<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
+    return this.request<T>('GET', endpoint, undefined, options);
+  }
+
+  public async post<T>(endpoint: string, data?: any, options?: RequestInit): Promise<ApiResponse<T>> {
+    return this.request<T>('POST', endpoint, data, options);
+  }
+
+  public async put<T>(endpoint: string, data?: any, options?: RequestInit): Promise<ApiResponse<T>> {
+    return this.request<T>('PUT', endpoint, data, options);
+  }
+
+  public async delete<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
+    return this.request<T>('DELETE', endpoint, undefined, options);
+  }
+
+  // Configuration methods
+  public setBaseUrl(baseUrl: string): void {
+    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  }
+
+  public getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  public setTimeout(timeout: number): void {
+    this.defaultTimeout = timeout;
+  }
+}
+
+/**
+ * API Service - Business logic layer
+ * Clean separation from HTTP client
  */
 export class ApiService {
   private static instance: ApiService;
   private httpClient: HttpClient;
 
-  private constructor(config: {
-    baseUrl: string;
-    useMockApi?: boolean;
-  }) {
-    this.httpClient = HttpClient.initialize(config.baseUrl);
-    
-    // Configure HttpClient to use mock API if needed
-    if (config.useMockApi !== undefined) {
-      this.httpClient.setUseMockApi(config.useMockApi);
-    }
-
-    console.log(`🔗 API Service initialized`);
+  private constructor(config: { baseUrl: string }) {
+    this.httpClient = new HttpClient(config.baseUrl);
+    console.log(`🔗 API Service initialized for ${config.baseUrl}`);
   }
 
-  public static initialize(config: {
-    baseUrl: string;
-    useMockApi?: boolean;
-  }): ApiService {
+  public static initialize(config: { baseUrl: string }): ApiService {
     if (!ApiService.instance) {
       ApiService.instance = new ApiService(config);
     }
@@ -48,20 +161,27 @@ export class ApiService {
   // =====================================
 
   /**
-   * Login user - Uses generic HttpClient
+   * Login user
    */
-  public async login(email: string, password: string): Promise<ApiResponse<{ message: string }>> {
-    return this.httpClient.post<{ message: string }>('/auth/login', {
-      email,
-      password
-    });
+  public async login(email: string, password: string): Promise<ApiResponse<{
+    user: UserData;
+    message: string;
+  }>> {
+    return this.httpClient.post('/auth/login', { email, password });
   }
 
   /**
-   * Logout user - Uses generic HttpClient
+   * Logout user
    */
   public async logout(): Promise<ApiResponse<{ message: string }>> {
-    return this.httpClient.post<{ message: string }>('/auth/logout');
+    return this.httpClient.post('/auth/logout');
+  }
+
+  /**
+   * Get current user (check authentication status)
+   */
+  public async getCurrentUser(): Promise<ApiResponse<UserData>> {
+    return this.httpClient.get('/auth/me');
   }
 
   // =====================================
@@ -75,13 +195,11 @@ export class ApiService {
     shortCode: string;
     fullShortUrl: string;
   }>> {
-    return this.httpClient.post('/urls/shorten', {
-      originalUrl
-    });
+    return this.httpClient.post('/urls/shorten', { originalUrl });
   }
 
   /**
-   * Resolve a short URL (for redirection)
+   * Resolve a short URL
    */
   public async resolveUrl(shortCode: string): Promise<ApiResponse<{
     originalUrl: string;
@@ -142,7 +260,7 @@ export class ApiService {
   // =====================================
 
   /**
-   * Check if API is available
+   * Health check
    */
   public async healthCheck(): Promise<ApiResponse<{ status: string; timestamp: number }>> {
     return this.httpClient.get('/health');
@@ -179,41 +297,11 @@ export class ApiService {
     }
   }
 
-  // =====================================
-  // HELPER METHODS
-  // =====================================
-
-  /**
-   * Switch between mock and real API
-   */
-  public setUseMockApi(useMock: boolean): void {
-    this.httpClient.setUseMockApi(useMock);
-  }
-
-  /**
-   * Get current authentication status
-   */
-  public isAuthenticated(): boolean {
-    return this.httpClient.isAuthenticated();
-  }
-
-  /**
-   * Get current user
-   */
-  public getCurrentUser() {
-    return this.httpClient.getCurrentUser();
-  }
-
-  /**
-   * Set API base URL
-   */
+  // Configuration methods
   public setBaseUrl(baseUrl: string): void {
     this.httpClient.setBaseUrl(baseUrl);
   }
 
-  /**
-   * Get API base URL
-   */
   public getBaseUrl(): string {
     return this.httpClient.getBaseUrl();
   }

@@ -1,11 +1,10 @@
-// src/core/App.ts
+// src/core/App.ts - FINAL FIXED VERSION
 
 import type { AppConfig, AppLifecycle, AppState } from '../types/app';
 import type { Router } from './router/Router';
-import { createRouter, navigateTo, setPageManager } from './router';
+import { createRouter, setPageManager } from './router';
 import { DOMManagerImpl } from './dom/DOMManager';
 import { PageManager } from '../pages/PageManager';
-import { StateManager } from '../core/state/StateManager';
 import { SessionService } from '../services/SessionService';
 
 /**
@@ -18,8 +17,6 @@ export class App implements AppLifecycle {
   private pageManager: PageManager;
   private state: AppState;
   private eventListeners: Array<() => void> = [];
-
-  private stateManager: StateManager;
   private sessionService: SessionService;
 
   constructor(config: AppConfig) {
@@ -35,7 +32,7 @@ export class App implements AppLifecycle {
     // Initialize core systems
     this.domManager = new DOMManagerImpl('#app', 'URL Shortener');
     this.pageManager = new PageManager(this.domManager);
-    this.router = createRouter(); // Router created but not initialized yet
+    this.router = createRouter();
 
     // Connect page manager to router
     setPageManager(this.pageManager);
@@ -45,7 +42,6 @@ export class App implements AppLifecycle {
     this.handleError = this.handleError.bind(this);
     this.handleUnhandledRejection = this.handleUnhandledRejection.bind(this);
 
-    this.stateManager = StateManager.getInstance();
     this.sessionService = SessionService.getInstance();
   }
 
@@ -109,7 +105,7 @@ export class App implements AppLifecycle {
     const errorListener = this.domManager.addEventListener(
       window,
       'error',
-      this.handleError
+      (event) => this.handleError(event.error || new Error(event.message))
     );
     this.eventListeners.push(errorListener);
 
@@ -126,19 +122,6 @@ export class App implements AppLifecycle {
    * Setup global event listeners
    */
   private setupGlobalEventListeners(): void {
-    // Handle session storage changes (logout from another tab)
-    const storageListener = this.domManager.addEventListener(
-      window,
-      'storage',
-      (event) => {
-        if (event.key === 'session' && !event.newValue) {
-          // Session was cleared in another tab
-          this.handleSessionExpiry();
-        }
-      }
-    );
-    this.eventListeners.push(storageListener);
-
     // Handle network status changes
     const onlineListener = this.domManager.addEventListener(
       window,
@@ -151,7 +134,9 @@ export class App implements AppLifecycle {
     this.eventListeners.push(onlineListener);
 
     const offlineListener = this.domManager.addEventListener(
-      window,'offline', () => {
+      window,
+      'offline',
+      () => {
         console.log('Connection lost');
         this.domManager.addClass('offline');
       }
@@ -242,18 +227,11 @@ export class App implements AppLifecycle {
   }
 
   /**
-   * Initialize session state from sessionStorage
+   * Initialize session state
    */
   private initializeSession(): void {
-    try {
-      const sessionData = sessionStorage.getItem('session');
-      if (sessionData) {
-        this.state.session = JSON.parse(sessionData);
-      }
-    } catch (error) {
-      console.warn('Failed to load session data:', error);
-      sessionStorage.removeItem('session');
-    }
+    // Load persisted session if available
+    this.sessionService.loadPersistedSession();
   }
 
   /**
@@ -261,8 +239,8 @@ export class App implements AppLifecycle {
    */
   private async preloadCriticalPages(): Promise<void> {
     if (this.config.environment === 'production') {
-      // Preload dashboard pages if user is authenticated
-      if (this.state.session) {
+      // Preload based on authentication status
+      if (this.sessionService.isAuthenticated()) {
         await this.pageManager.preloadPages(['dashboard', 'urls']);
       } else {
         await this.pageManager.preloadPages(['home']);
@@ -271,25 +249,9 @@ export class App implements AppLifecycle {
   }
 
   /**
-   * Handle session expiry
-   */
-  private handleSessionExpiry(): void {
-    this.state.session = null;
-    sessionStorage.removeItem('session');
-    
-    // Redirect to home if on protected route
-    const currentRoute = this.router.getCurrentRoute();
-    if (currentRoute && currentRoute.path.startsWith('/dashboard')) {
-      navigateTo('/', true);
-    }
-  }
-
-  /**
    * Handle application errors
    */
-  private handleError(event: ErrorEvent | Error): void {
-    const error = event instanceof ErrorEvent ? event.error : event;
-    
+  private handleError(error: Error): void {
     console.error('Application error:', error);
     
     this.state.error = error.message;

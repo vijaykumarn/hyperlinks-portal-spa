@@ -13,6 +13,40 @@ export interface AppConfig {
 }
 
 /**
+ * User data structure
+ */
+export interface UserData {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  createdAt: number;
+}
+
+/**
+ * URL data structure
+ */
+export interface UrlData {
+  id: string;
+  shortCode: string;
+  originalUrl: string;
+  createdAt: number;
+  clicks: number;
+  userId?: string;
+  expiresAt?: number;
+}
+
+/**
+ * Analytics data structure
+ */
+export interface AnalyticsData {
+  totalUrls: number;
+  totalClicks: number;
+  topUrls: Array<{ shortCode: string; originalUrl: string; clicks: number }>;
+  recentActivity: Array<{ date: string; clicks: number }>;
+}
+
+/**
  * Page component interface
  */
 export interface PageComponent {
@@ -37,12 +71,7 @@ export interface AppLifecycle {
  * Session data structure
  */
 export interface SessionData {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
-  };
+  user: UserData;
   token: string;
   expiresAt: number;
 }
@@ -59,14 +88,64 @@ export interface AppState {
 }
 
 /**
- * DOM utilities interface
+ * DOM utilities interface - ENHANCED
  */
 export interface DOMManager {
+  // Core DOM methods
   getAppRoot(): HTMLElement;
   clearContent(): void;
   setContent(html: string): void;
+  appendContent(html: string): void;
   addToHead(element: HTMLElement): void;
+  
+  // Title and class management
   setTitle(title: string): void;
   addClass(className: string): void;
   removeClass(className: string): void;
+  toggleClass(className: string): void;
+  
+  // Loading and error states
+  showLoading(): void;
+  hideLoading(): void;
+  showError(message: string, canRetry?: boolean): void;
+  
+  // Event handling with proper typing
+  addEventListener<K extends keyof WindowEventMap>(
+    element: Window,
+    type: K,
+    listener: (this: Window, ev: WindowEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): () => void;
+  
+  addEventListener<K extends keyof DocumentEventMap>(
+    element: Document,
+    type: K,
+    listener: (this: Document, ev: DocumentEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): () => void;
+  
+  addEventListener<K extends keyof HTMLElementEventMap>(
+    element: HTMLElement,
+    type: K,
+    listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): () => void;
+  
+  // Utility methods
+  createLoadingSpinner(size?: 'sm' | 'md' | 'lg'): HTMLElement;
+  scrollToElement(element: HTMLElement, behavior?: ScrollBehavior): void;
+  getElementRect(element: HTMLElement): DOMRect;
+  isInViewport(element: HTMLElement): boolean;
+  debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void;
+  throttle<T extends (...args: any[]) => any>(func: T, limit: number): (...args: Parameters<T>) => void;
+}
+
+/**
+ * API Response interface
+ */
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
 }

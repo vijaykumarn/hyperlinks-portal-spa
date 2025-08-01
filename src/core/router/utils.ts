@@ -1,4 +1,4 @@
-// src/core/router/utils.ts
+// src/core/router/utils.ts - FIXED VERSION
 
 import type { RouteParams, QueryParams, MatchedRoute, Route } from '../../types/router';
 
@@ -18,7 +18,7 @@ export function pathToRegexp(path: string): { regexp: RegExp; keys: string[] } {
   pattern = pattern.replace(/\*/g, '(.*)');
   
   // Handle named parameters (:param)
-  pattern = pattern.replace(/:([^/]+)/g, (match, key) => {
+  pattern = pattern.replace(/:([^/]+)/g, (_match, key) => {
     keys.push(key);
     return '([^/]+)';
   });

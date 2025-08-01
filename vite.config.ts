@@ -1,7 +1,6 @@
 // vite.config.ts
 
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
 
 export default defineConfig({
   // Base public path
@@ -14,10 +13,8 @@ export default defineConfig({
     // Code splitting configuration
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Vendor chunk for third-party libraries
-          vendor: ['lodash-es'],
-          // Router chunk
+         manualChunks: {
+          // Router chunk for better caching
           router: ['./src/core/router/index.ts'],
           // Pages chunk for lazy loading
           pages: [

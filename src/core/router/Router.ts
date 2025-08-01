@@ -1,4 +1,4 @@
-// src/core/router/Router.ts
+// src/core/router/Router.ts - FIXED VERSION
 
 import type { 
   Route, 
@@ -6,15 +6,12 @@ import type {
   RouteGuardContext, 
   RouterConfig, 
   NavigationOptions,
-  MatchedRoute,
-  RouteGuard,
-  NavigationFailureType
+  RouteGuard
 } from '../../types/router';
 import { NavigationFailure } from '../../types/router';
 import { 
   matchRoute, 
   parseQuery, 
-  stringifyQuery, 
   normalizePath,
   resolvePath
 } from './utils';
@@ -30,10 +27,9 @@ export class Router {
 
   constructor(config: RouterConfig) {
     this.config = {
-      mode: 'history',
       base: '',
       fallback: '/',
-      ...config
+      ...config // This will properly override mode and other properties
     };
 
     // Don't initialize immediately - let the app control this
@@ -282,7 +278,7 @@ export class Router {
   /**
    * Handle popstate event (back/forward navigation)
    */
-  private handlePopState(event: PopStateEvent): void {
+  private handlePopState(_event: PopStateEvent): void {
     const path = this.getCurrentPath();
     this.navigate(path).catch(error => {
       console.error('Navigation error on popstate:', error);
