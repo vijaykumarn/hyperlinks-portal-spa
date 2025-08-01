@@ -1,4 +1,4 @@
-// src/core/dom/DOMManager.ts
+// src/core/dom/DOMManager.ts - FIXED VERSION
 
 import type { DOMManager } from '../../types/app';
 
@@ -151,19 +151,40 @@ export class DOMManagerImpl implements DOMManager {
   }
 
   /**
-   * Add event listener with automatic cleanup
+   * FIXED: Overloaded addEventListener method to handle different element types
    */
+  public addEventListener<K extends keyof WindowEventMap>(
+    element: Window,
+    type: K,
+    listener: (this: Window, ev: WindowEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): () => void;
+  
+  public addEventListener<K extends keyof DocumentEventMap>(
+    element: Document,
+    type: K,
+    listener: (this: Document, ev: DocumentEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): () => void;
+  
   public addEventListener<K extends keyof HTMLElementEventMap>(
-    element: HTMLElement | Document | Window,
+    element: HTMLElement,
     type: K,
     listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any,
     options?: boolean | AddEventListenerOptions
+  ): () => void;
+
+  public addEventListener(
+    element: Window | Document | HTMLElement,
+    type: string,
+    listener: EventListener,
+    options?: boolean | AddEventListenerOptions
   ): () => void {
-    element.addEventListener(type, listener as EventListener, options);
+    element.addEventListener(type, listener, options);
     
     // Return cleanup function
     return () => {
-      element.removeEventListener(type, listener as EventListener, options);
+      element.removeEventListener(type, listener, options);
     };
   }
 

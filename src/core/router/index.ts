@@ -1,13 +1,12 @@
-// src/core/router/index.ts
+// src/core/router/index.ts - FIXED VERSION
 
 export { Router } from './Router';
 export * from './guards';
 export * from './utils';
 export * from '../../types/router';
 
-// Example usage and setup for your URL shortener app
 import { Router } from './Router';
-import { authGuard, guestGuard, loggingGuard } from './guards';
+import { authGuard, loggingGuard } from './guards';
 import type { Route } from '../../types/router';
 
 // Global reference to page manager - will be set by App class
@@ -26,10 +25,10 @@ export function setPageManager(pageManager: any): void {
  */
 export function createRouter(): Router {
   const router = new Router({
-    mode: 'history', // Use history mode for cleaner URLs
+    mode: 'history',
     base: '/',
-    fallback: '/', // Default fallback 
-    guards: [loggingGuard] // Global guards
+    fallback: '/',
+    guards: [loggingGuard]
   });
 
   // Define routes for your URL shortener
@@ -60,7 +59,7 @@ export function createRouter(): Router {
       handler: async (context) => {
         await renderDashboard(context);
       },
-      guards: [authGuard], // Requires authentication
+      guards: [authGuard],
       meta: {
         requiresAuth: true,
         title: 'Dashboard'
@@ -72,7 +71,7 @@ export function createRouter(): Router {
       handler: async (context) => {
         await renderUrlsPage(context);
       },
-      guards: [authGuard], // Requires authentication
+      guards: [authGuard],
       meta: {
         requiresAuth: true,
         title: 'URLs - Dashboard'
@@ -84,7 +83,7 @@ export function createRouter(): Router {
       handler: async (context) => {
         await renderAnalyticsPage(context);
       },
-      guards: [authGuard], // Requires authentication
+      guards: [authGuard],
       meta: {
         requiresAuth: true,
         title: 'Analytics - Dashboard'
@@ -96,7 +95,7 @@ export function createRouter(): Router {
       handler: async (context) => {
         await renderSettingsPage(context);
       },
-      guards: [authGuard], // Requires authentication
+      guards: [authGuard],
       meta: {
         requiresAuth: true,
         title: 'Settings - Dashboard'
@@ -117,10 +116,9 @@ export function createRouter(): Router {
       }
     },
     {
-      path: '*', // Catch-all route
+      path: '*',
       name: 'catchAll',
-      handler: async (context) => {
-        // Redirect to 404
+      handler: async (_context) => {
         router.replace('/404');
       }
     }
@@ -176,42 +174,23 @@ async function handleUrlRedirect(context: any): Promise<void> {
   const { shortCode } = context.params;
   console.log('🔗 Handling redirect for:', shortCode);
   
-  // Mock URL redirection - in real app, you'd fetch from API
-  const mockUrls: Record<string, string> = {
-    'abc123': 'https://www.google.com',
-    'xyz789': 'https://www.github.com',
-    'test': 'https://www.example.com'
-  };
-
-  const originalUrl = mockUrls[shortCode];
-  
-  if (originalUrl) {
-    // In a real app, you'd also track analytics here
-    console.log(`🚀 Redirecting ${shortCode} to ${originalUrl}`);
-    
-    // Show redirect page briefly, then redirect
-    if (globalPageManager) {
-      const domManager = globalPageManager.domManager;
-      domManager.setContent(`
-        <div class="flex items-center justify-center min-h-screen bg-gray-50">
-          <div class="text-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <h1 class="text-2xl font-bold mb-2">Redirecting...</h1>
-            <p class="text-gray-600 mb-4">Taking you to: ${originalUrl}</p>
-            <p class="text-sm text-gray-500">If you're not redirected automatically, 
-              <a href="${originalUrl}" class="text-blue-500 underline">click here</a>
-            </p>
-          </div>
+  if (globalPageManager) {
+    const domManager = globalPageManager.domManager;
+    domManager.setContent(`
+      <div class="flex items-center justify-center min-h-screen bg-gray-50">
+        <div class="text-center">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <h1 class="text-2xl font-bold mb-2">Redirecting...</h1>
+          <p class="text-gray-600 mb-4">Looking up short URL: ${shortCode}</p>
+          <p class="text-sm text-gray-500">Please wait while we redirect you...</p>
         </div>
-      `);
-    }
-    
-    // Redirect after 2 seconds
-    setTimeout(() => {
-      window.location.href = originalUrl;
-    }, 2000);
-  } else {
-    // Short code not found
+      </div>
+    `);
+  }
+
+  // In a real app, you'd call your API here
+  // For now, show a placeholder
+  setTimeout(() => {
     if (globalPageManager) {
       const domManager = globalPageManager.domManager;
       domManager.setContent(`
@@ -230,7 +209,7 @@ async function handleUrlRedirect(context: any): Promise<void> {
         </div>
       `);
     }
-  }
+  }, 2000);
 }
 
 async function render404Page(context: any): Promise<void> {
@@ -243,7 +222,6 @@ async function render404Page(context: any): Promise<void> {
 
 /**
  * Router instance singleton
- * Initialize this in your main application file
  */
 let routerInstance: Router | null = null;
 

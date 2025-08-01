@@ -1,4 +1,7 @@
-// src/pages/SettingsPage.ts
+// src/pages/SettingsPage.ts - FIXED VERSION
+
+import type { PageComponent, DOMManager } from "../types/app";
+import type { RouteContext } from "../types/router";
 
 export class SettingsPage implements PageComponent {
   private domManager: DOMManager;
@@ -7,7 +10,7 @@ export class SettingsPage implements PageComponent {
     this.domManager = domManager;
   }
 
-  public async render(context: RouteContext): Promise<void> {
+  public async render(_context: RouteContext): Promise<void> {
     const html = `
       <div class="min-h-screen bg-gray-50">
         <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">

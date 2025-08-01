@@ -1,34 +1,19 @@
-// src/state/types.ts
+// src/core/state/types.ts
+
+import type { UserData, UrlData, AnalyticsData } from '../../types/app';
 
 /**
- * Core state interfaces for the URL shortener application
+ * Session state (NO TOKENS - HttpOnly cookies only)
  */
-
-export interface UserData {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  createdAt: number;
-}
-
 export interface SessionState {
   user: UserData | null;
   isAuthenticated: boolean;
   lastValidated: number;
-  // NO TOKEN - HttpOnly cookies handle authentication!
 }
 
-export interface UrlData {
-  id: string;
-  shortCode: string;
-  originalUrl: string;
-  createdAt: number;
-  clicks: number;
-  userId?: string;
-  expiresAt?: number;
-}
-
+/**
+ * URL management state
+ */
 export interface UrlState {
   userUrls: UrlData[];
   recentUrls: UrlData[];
@@ -36,6 +21,9 @@ export interface UrlState {
   error: string | null;
 }
 
+/**
+ * UI state management
+ */
 export interface UIState {
   isLoading: boolean;
   currentPage: string | null;
@@ -47,6 +35,9 @@ export interface UIState {
   };
 }
 
+/**
+ * Notification interface
+ */
 export interface Notification {
   id: string;
   type: 'success' | 'error' | 'warning' | 'info';
@@ -54,13 +45,9 @@ export interface Notification {
   duration?: number;
 }
 
-export interface AnalyticsData {
-  totalUrls: number;
-  totalClicks: number;
-  topUrls: Array<{ shortCode: string; originalUrl: string; clicks: number }>;
-  recentActivity: Array<{ date: string; clicks: number }>;
-}
-
+/**
+ * Analytics state
+ */
 export interface AnalyticsState {
   data: AnalyticsData | null;
   isLoading: boolean;
@@ -68,6 +55,9 @@ export interface AnalyticsState {
   lastUpdated: number | null;
 }
 
+/**
+ * Complete application state
+ */
 export interface AppState {
   session: SessionState;
   urls: UrlState;
@@ -99,7 +89,7 @@ export type Action =
   | { type: 'UI_TOGGLE_MODAL'; payload: { modal: keyof UIState['modals']; open: boolean } }
   
   // Analytics actions
-  | { type: 'ANALYTICS_SET_DATA'; payload: AnalyticsData }
+  | { type: 'ANALYTICS_SET_DATA'; payload: AnalyticsData | null }
   | { type: 'ANALYTICS_SET_LOADING'; payload: boolean }
   | { type: 'ANALYTICS_SET_ERROR'; payload: string | null };
 

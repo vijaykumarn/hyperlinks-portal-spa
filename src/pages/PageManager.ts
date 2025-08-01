@@ -1,8 +1,7 @@
-// src/pages/PageManager.ts
+// src/pages/PageManager.ts - FIXED VERSION
 
-import type { PageComponent } from '../types/app';
+import type { PageComponent, DOMManager } from '../types/app';
 import type { RouteContext } from '../types/router';
-import type { DOMManager } from '../types/app';
 
 export class PageManager {
   private domManager: DOMManager;
@@ -126,7 +125,7 @@ export class PageManager {
    */
   public clearCache(): void {
     // Cleanup all page instances
-    for (const [name, instance] of this.pageInstances) {
+    for (const [_name, instance] of this.pageInstances) {
       if (instance.cleanup) {
         instance.cleanup();
       }
