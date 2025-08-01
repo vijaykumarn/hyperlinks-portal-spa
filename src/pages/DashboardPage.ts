@@ -1,21 +1,23 @@
-// src/pages/DashboardPage.ts
+// src/pages/DashboardPage.ts - FIXED VERSION
 
 import type { PageComponent } from '../types/app';
 import type { RouteContext } from '../types/router';
 import type { DOMManager } from '../types/app';
+import { SessionService } from '../services/SessionService'; // Added import
 
 export class DashboardPage implements PageComponent {
   private domManager: DOMManager;
   private eventListeners: Array<() => void> = [];
+  private sessionService: SessionService; // Added
 
   constructor(domManager: DOMManager) {
     this.domManager = domManager;
+    this.sessionService = SessionService.getInstance(); // Added
   }
 
   public async beforeEnter(context: RouteContext): Promise<boolean> {
-    // Check authentication
-    const sessionData = sessionStorage.getItem('session');
-    if (!sessionData) {
+    // FIXED: Use SessionService instead of direct sessionStorage
+    if (!this.sessionService.isAuthenticated()) {
       // Redirect to home if not authenticated
       const router = (window as any).__APP__?.getInstance()?.getRouter();
       if (router) {
@@ -27,13 +29,20 @@ export class DashboardPage implements PageComponent {
   }
 
   public async render(context: RouteContext): Promise<void> {
+    // Get current user info for personalized greeting
+    const user = this.sessionService.getCurrentUser();
+    const userName = user?.name || 'User';
+
     const html = `
       <div class="min-h-screen bg-gray-50">
         <!-- Header -->
         <header class="bg-white shadow">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center py-6">
-              <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
+              <div>
+                <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
+                <p class="text-gray-600 mt-1">Welcome back, ${userName}!</p>
+              </div>
               <button 
                 id="logout-btn" 
                 class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors"
@@ -47,7 +56,7 @@ export class DashboardPage implements PageComponent {
         <!-- Main Content -->
         <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
           <div class="px-4 py-6 sm:px-0">
-            <div class="text-center">
+            <div class="text-center mb-8">
               <h2 class="text-2xl font-bold text-gray-900 mb-4">Welcome to your Dashboard!</h2>
               <p class="text-gray-600 mb-8">Manage your URLs, view analytics, and more.</p>
               
@@ -140,11 +149,23 @@ export class DashboardPage implements PageComponent {
     }
   }
 
-  private handleLogout(): void {
-    sessionStorage.removeItem('session');
-    const router = (window as any).__APP__?.getInstance()?.getRouter();
-    if (router) {
-      router.replace('/');
+  private async handleLogout(): Promise<void> {
+    try {
+      // FIXED: Use SessionService instead of direct sessionStorage manipulation  
+      this.sessionService.clearSession();
+      
+      const router = (window as any).__APP__?.getInstance()?.getRouter();
+      if (router) {
+        router.replace('/');
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Force logout even if API call fails
+      this.sessionService.clearSession();
+      const router = (window as any).__APP__?.getInstance()?.getRouter();
+      if (router) {
+        router.replace('/');
+      }
     }
   }
 

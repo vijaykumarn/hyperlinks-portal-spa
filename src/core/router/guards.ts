@@ -1,17 +1,23 @@
 // src/core/router/guards.ts
 
 import type { RouteGuard } from '../../types/router';
+import { SessionService } from '../../services/SessionService';
 
 /**
- * Authentication guard - checks if user is authenticated
- * Redirects to home (public area) if not authenticated
+ * Get session service instance
+ */
+function getSessionService(): SessionService {
+  return SessionService.getInstance();
+}
+
+/**
+ * Authentication guard - checks if user is authenticated via session data
+ * NO JWT tokens - uses HttpOnly cookie + session data pattern
  */
 export const authGuard: RouteGuard = async (context) => {
-  // Check if user is authenticated
-  const isAuthenticated = checkAuthStatus();
+  const sessionService = getSessionService();
   
-  if (!isAuthenticated) {
-    // Redirect to home (public area) for unauthenticated users
+  if (!sessionService.isAuthenticated()) {
     console.log('🔒 AuthGuard: User not authenticated, redirecting to /');
     return '/';
   }
@@ -25,10 +31,9 @@ export const authGuard: RouteGuard = async (context) => {
  * Redirects to dashboard if already authenticated
  */
 export const guestGuard: RouteGuard = async (context) => {
-  const isAuthenticated = checkAuthStatus();
+  const sessionService = getSessionService();
   
-  if (isAuthenticated) {
-    // Redirect authenticated users to dashboard
+  if (sessionService.isAuthenticated()) {
     console.log('🔒 GuestGuard: User authenticated, redirecting to /dashboard');
     return '/dashboard';
   }
@@ -41,17 +46,17 @@ export const guestGuard: RouteGuard = async (context) => {
  * Admin guard - checks if user has admin privileges
  */
 export const adminGuard: RouteGuard = async (context) => {
-  const isAuthenticated = checkAuthStatus();
+  const sessionService = getSessionService();
   
-  if (!isAuthenticated) {
+  if (!sessionService.isAuthenticated()) {
     console.log('🔒 AdminGuard: User not authenticated, redirecting to /');
     return '/';
   }
   
-  const hasAdminRole = checkAdminRole();
+  const user = sessionService.getCurrentUser();
+  const hasAdminRole = user?.role === 'admin';
   
   if (!hasAdminRole) {
-    // Redirect to user dashboard if not admin
     console.log('🔒 AdminGuard: User not admin, redirecting to /dashboard');
     return '/dashboard';
   }
@@ -61,29 +66,31 @@ export const adminGuard: RouteGuard = async (context) => {
 };
 
 /**
- * Route meta guard - checks route meta requirements
+ * Route meta guard - checks route meta requirements using session data
  */
 export const metaGuard: RouteGuard = async (context) => {
   const { to } = context;
+  const sessionService = getSessionService();
   
   if (!to.meta) {
     return true;
   }
   
   // Check if route requires authentication
-  if (to.meta.requiresAuth && !checkAuthStatus()) {
+  if (to.meta.requiresAuth && !sessionService.isAuthenticated()) {
     console.log('🔒 MetaGuard: Route requires auth, redirecting to /');
     return '/';
   }
   
   // Check if route requires specific role
   if (to.meta.requiredRole) {
-    if (!checkAuthStatus()) {
+    if (!sessionService.isAuthenticated()) {
       console.log('🔒 MetaGuard: Route requires role but user not authenticated, redirecting to /');
       return '/';
     }
     
-    if (!checkUserRole(to.meta.requiredRole)) {
+    const user = sessionService.getCurrentUser();
+    if (!user || user.role !== to.meta.requiredRole) {
       console.log('🔒 MetaGuard: User lacks required role, redirecting to /dashboard');
       return '/dashboard';
     }
@@ -93,84 +100,44 @@ export const metaGuard: RouteGuard = async (context) => {
 };
 
 /**
- * Helper function to check authentication status
- * This should integrate with your session management system
- */
-function checkAuthStatus(): boolean {
-  try {
-    const sessionData = sessionStorage.getItem('session');
-    if (!sessionData) {
-      return false;
-    }
-    
-    const session = JSON.parse(sessionData);
-    
-    // Check if session is still valid (you might want to check expiry, etc.)
-    const isValid = !!(session && session.user && session.token);
-    
-    // Optional: Check expiry
-    if (isValid && session.expiresAt && Date.now() > session.expiresAt) {
-      console.log('🔒 Session expired, clearing storage');
-      sessionStorage.removeItem('session');
-      return false;
-    }
-    
-    return isValid;
-  } catch (error) {
-    console.error('🔒 Error checking auth status:', error);
-    return false;
-  }
-}
-
-/**
- * Helper function to check admin role
- */
-function checkAdminRole(): boolean {
-  try {
-    const sessionData = sessionStorage.getItem('session');
-    if (!sessionData) {
-      return false;
-    }
-    
-    const session = JSON.parse(sessionData);
-    return session?.user?.role === 'admin';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Helper function to check specific user role
- */
-function checkUserRole(requiredRole: string): boolean {
-  try {
-    const sessionData = sessionStorage.getItem('session');
-    if (!sessionData) {
-      return false;
-    }
-    
-    const session = JSON.parse(sessionData);
-    return session?.user?.role === requiredRole;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Logging guard - logs navigation for debugging/analytics
+ * Now includes secure session info
  */
 export const loggingGuard: RouteGuard = async (context) => {
   if (process.env.NODE_ENV === 'development') {
+    const sessionService = getSessionService();
+    const user = sessionService.getCurrentUser();
+    
     console.log('🚀 Navigation:', {
       from: context.from?.path || 'initial',
       to: context.to.path,
       params: context.params,
       query: context.query,
-      authenticated: checkAuthStatus()
+      authenticated: sessionService.isAuthenticated(),
+      user: user ? { id: user.id, email: user.email, role: user.role } : null
     });
   }
   
-  // Could also send analytics data here
+  return true;
+};
+
+/**
+ * Session validation guard - ensures session is not stale
+ * Useful for sensitive operations
+ */
+export const sessionValidationGuard: RouteGuard = async (context) => {
+  const sessionService = getSessionService();
+  
+  if (!sessionService.isAuthenticated()) {
+    return '/';
+  }
+  
+  // Check if session is stale (older than 30 minutes)
+  if (sessionService.isSessionStale(30)) {
+    console.log('⚠️ Session is stale, but allowing access (will validate on next API call)');
+    // Note: We don't block here because the next API call will validate the session
+    // This provides better UX than blocking on potentially valid sessions
+  }
   
   return true;
 };
@@ -194,3 +161,31 @@ export const rateLimitGuard: RouteGuard = (() => {
     return true;
   };
 })();
+
+/**
+ * Development guard - only allows access in development mode
+ */
+export const devOnlyGuard: RouteGuard = async (context) => {
+  if (process.env.NODE_ENV !== 'development') {
+    console.log('🔒 DevOnlyGuard: Not in development mode, redirecting to /');
+    return '/';
+  }
+  
+  return true;
+};
+
+/**
+ * Maintenance guard - blocks access during maintenance
+ */
+export const maintenanceGuard: RouteGuard = async (context) => {
+  // You could check a feature flag or environment variable here
+  const isMaintenanceMode = false; // Configure this based on your needs
+  
+  if (isMaintenanceMode) {
+    console.log('🚧 MaintenanceGuard: Site in maintenance mode');
+    // You could redirect to a maintenance page
+    return '/maintenance';
+  }
+  
+  return true;
+};

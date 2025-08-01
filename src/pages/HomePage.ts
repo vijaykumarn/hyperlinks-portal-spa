@@ -3,7 +3,9 @@
 import type { PageComponent } from '../types/app';
 import type { RouteContext } from '../types/router';
 import type { DOMManager } from '../types/app';
-import { MockApiService } from '../services/mockApi';
+import { StateManager } from '../core/state/StateManager'; // Fixed: Correct path
+import { ApiService } from '../services/ApiService';
+import { SessionService } from '../services/SessionService'; // Added: Missing import
 
 /**
  * Home page component for the URL shortener
@@ -11,20 +13,23 @@ import { MockApiService } from '../services/mockApi';
 export class HomePage implements PageComponent {
   private domManager: DOMManager;
   private eventListeners: Array<() => void> = [];
-  private mockApi: MockApiService;
+  private stateManager: StateManager;
+  private apiService: ApiService;
+  private sessionService: SessionService; // Added: Missing service
 
   constructor(domManager: DOMManager) {
     this.domManager = domManager;
-    this.mockApi = MockApiService.getInstance();
+    this.stateManager = StateManager.getInstance();
+    this.apiService = ApiService.getInstance();
+    this.sessionService = SessionService.getInstance(); // Added: Initialize session service
   }
 
   /**
    * Check if user can enter this page
    */
   public async beforeEnter(context: RouteContext): Promise<boolean> {
-    // Check if user is already authenticated
-    const sessionData = sessionStorage.getItem('session');
-    if (sessionData) {
+    // Fixed: Use SessionService instead of directly checking sessionStorage
+    if (this.sessionService.isAuthenticated()) {
       // User is authenticated, redirect to dashboard
       const router = (window as any).__APP__?.getInstance()?.getRouter();
       if (router) {
@@ -252,7 +257,7 @@ export class HomePage implements PageComponent {
     // URL shortening
     const shortenBtn = document.getElementById('shorten-btn');
     const urlInput = document.getElementById('url-input') as HTMLInputElement;
-    
+
     if (shortenBtn && urlInput) {
       const listener = this.domManager.addEventListener(shortenBtn, 'click', () => {
         this.handleUrlShorten(urlInput.value);
@@ -320,7 +325,7 @@ export class HomePage implements PageComponent {
   }
 
   /**
-   * Handle URL shortening using mock API
+   * Handle URL shortening using new API service
    */
   private async handleUrlShorten(url: string): Promise<void> {
     if (!url || !this.isValidUrl(url)) {
@@ -336,22 +341,23 @@ export class HomePage implements PageComponent {
       shortenBtn.disabled = true;
       shortenBtn.textContent = 'Shortening...';
 
-      // Use mock API to shorten URL
-      const result = await this.mockApi.shortenUrl(url);
-      
-      if (result.success && result.fullShortUrl) {
+      // Fixed: Use correct API service method
+      const result = await this.apiService.shortenUrl(url);
+
+      // Fixed: Check result structure correctly
+      if (result.success && result.data?.fullShortUrl) {
         if (shortUrlInput) {
-          shortUrlInput.value = result.fullShortUrl;
+          shortUrlInput.value = result.data.fullShortUrl;
         }
-        
+
         if (resultArea) {
           resultArea.classList.remove('hidden');
         }
 
         // Setup copy functionality
-        this.setupCopyButton(result.fullShortUrl);
+        this.setupCopyButton(result.data.fullShortUrl);
       } else {
-        alert(result.message || 'Failed to shorten URL');
+        alert(result.error || 'Failed to shorten URL');
       }
 
     } catch (error) {
@@ -389,7 +395,7 @@ export class HomePage implements PageComponent {
           textArea.select();
           document.execCommand('copy');
           document.body.removeChild(textArea);
-          
+
           newCopyBtn.textContent = 'Copied!';
           setTimeout(() => {
             newCopyBtn.textContent = 'Copy';
@@ -401,8 +407,8 @@ export class HomePage implements PageComponent {
   }
 
   /**
-   * Handle login form submission using mock API
-   */
+ * Handle login form submission - SIMPLE DEBUG VERSION
+ */
   private async handleLogin(): Promise<void> {
     const emailInput = document.getElementById('email') as HTMLInputElement;
     const passwordInput = document.getElementById('password') as HTMLInputElement;
@@ -415,26 +421,65 @@ export class HomePage implements PageComponent {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Logging in...';
 
-      // Use mock API for login
-      const result = await this.mockApi.login(email, password);
+      console.log('🔐 HomePage: Starting login...');
 
-      if (result.success && result.user && result.token) {
-        // Create session data
-        const sessionData = {
-          user: result.user,
-          token: result.token,
-          expiresAt: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
-        };
+      // Use API service
+      const result = await this.apiService.login(email, password);
 
-        sessionStorage.setItem('session', JSON.stringify(sessionData));
+      console.log('🔐 HomePage: API service login returned:', result);
+      console.log('🔐 HomePage: Does result have session?', !!result.session);
+      console.log('🔐 HomePage: Session data:', result.session);
 
-        // Redirect to dashboard
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) {
-          router.push('/dashboard');
+      if (result.success) {
+        console.log('✅ HomePage: Login successful, waiting...');
+
+        // Wait for state to update
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Check authentication
+        const isAuth = this.sessionService.isAuthenticated();
+        console.log('🔐 HomePage: isAuthenticated after delay:', isAuth);
+
+        // Check current session state
+        const sessionInfo = this.sessionService.getSessionInfo();
+        console.log('🔐 HomePage: Current session info:', sessionInfo);
+
+        if (isAuth) {
+          console.log('✅ HomePage: Authenticated - redirecting');
+          this.hideLoginModal();
+
+          const router = (window as any).__APP__?.getInstance()?.getRouter();
+          if (router) {
+            await router.push('/dashboard');
+          }
+        } else {
+          console.error('❌ HomePage: Not authenticated after successful login');
+
+          // Manual fix attempt
+          if (result.session?.isAuthenticated && result.session.user) {
+            console.log('🔧 HomePage: Attempting manual session update...');
+            this.sessionService.updateFromApiResponse(result);
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            const isAuthAfterManual = this.sessionService.isAuthenticated();
+            console.log('🔐 HomePage: isAuthenticated after manual update:', isAuthAfterManual);
+
+            if (isAuthAfterManual) {
+              this.hideLoginModal();
+              const router = (window as any).__APP__?.getInstance()?.getRouter();
+              if (router) {
+                await router.push('/dashboard');
+              }
+            } else {
+              alert('Session update failed. Please try again.');
+            }
+          } else {
+            alert('Authentication issue. Please try again.');
+          }
         }
       } else {
-        alert(result.message || 'Login failed. Please try again.');
+        alert(result.error || 'Login failed. Please try again.');
       }
 
     } catch (error) {
