@@ -1,4 +1,4 @@
-// src/state/StateManager.ts
+// src/core/state/StateManager.ts - FIXED VERSION
 
 import type { 
   AppState, 
@@ -10,6 +10,7 @@ import type {
   UIState,
   AnalyticsState
 } from './types';
+import type { UserData } from '../../types/app';
 
 /**
  * Subscription interface for state changes
@@ -93,7 +94,7 @@ export class StateManager {
           this.state.session = {
             user: session.user,
             isAuthenticated: true,
-            lastValidated: session.lastValidated || Date.now()
+            lastValidated: session.timestamp || Date.now()
           };
         }
       }
@@ -111,7 +112,7 @@ export class StateManager {
       if (this.state.session.isAuthenticated && this.state.session.user) {
         const sessionData = {
           user: this.state.session.user,
-          lastValidated: this.state.session.lastValidated
+          timestamp: this.state.session.lastValidated
         };
         sessionStorage.setItem('session', JSON.stringify(sessionData));
       } else {
@@ -332,7 +333,7 @@ export class StateManager {
             data: action.payload,
             isLoading: false,
             error: null,
-            lastUpdated: Date.now()
+            lastUpdated: action.payload ? Date.now() : null
           }
         };
 

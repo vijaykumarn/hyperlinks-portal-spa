@@ -1,21 +1,19 @@
-// src/main.ts
+// src/scripts/main.ts - FIXED VERSION WITHOUT MOCK API
 
 import { App } from '../core/App';
 import type { AppConfig } from '../types/app';
 import { StateManager } from '../core/state/StateManager';
 import { SessionService } from '../services/SessionService';
 import { ApiService } from '../services/ApiService';
-import '../styles/main.css'; // Import your CSS
-
+import '../styles/main.css';
 
 // Initialize services
 const stateManager = StateManager.getInstance();
 const sessionService = SessionService.getInstance();
 
-// Initialize API service
+// Initialize API service (no mock API)
 const apiService = ApiService.initialize({
-  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
-  useMockApi: import.meta.env.VITE_USE_MOCK_API === 'true' || import.meta.env.MODE === 'development'
+  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
 });
 
 // Make services globally available for debugging
@@ -24,7 +22,6 @@ if (import.meta.env.MODE === 'development') {
   (window as any).__SESSION__ = sessionService;
   (window as any).__API__ = apiService;
 }
-
 
 /**
  * Application configuration
@@ -93,10 +90,8 @@ async function initializeApp(): Promise<void> {
 function handleVisibilityChange(): void {
   if (document.hidden) {
     console.log('App hidden - pausing non-critical operations');
-    // Pause timers, stop animations, etc.
   } else {
     console.log('App visible - resuming operations');
-    // Resume operations
   }
 }
 
@@ -105,7 +100,6 @@ function handleVisibilityChange(): void {
  */
 function handleBeforeUnload(): void {
   if (app) {
-    // Perform quick cleanup
     console.log('App unloading - performing cleanup');
   }
 }

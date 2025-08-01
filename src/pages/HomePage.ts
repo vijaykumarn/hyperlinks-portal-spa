@@ -1,34 +1,23 @@
-// src/pages/HomePage.ts
+// src/pages/HomePage.ts - FIXED VERSION
 
-import type { PageComponent } from '../types/app';
+import type { PageComponent, DOMManager } from '../types/app';
 import type { RouteContext } from '../types/router';
-import type { DOMManager } from '../types/app';
-import { StateManager } from '../core/state/StateManager'; // Fixed: Correct path
 import { ApiService } from '../services/ApiService';
-import { SessionService } from '../services/SessionService'; // Added: Missing import
+import { SessionService } from '../services/SessionService';
 
-/**
- * Home page component for the URL shortener
- */
 export class HomePage implements PageComponent {
   private domManager: DOMManager;
   private eventListeners: Array<() => void> = [];
-  private stateManager: StateManager;
   private apiService: ApiService;
-  private sessionService: SessionService; // Added: Missing service
+  private sessionService: SessionService;
 
   constructor(domManager: DOMManager) {
     this.domManager = domManager;
-    this.stateManager = StateManager.getInstance();
     this.apiService = ApiService.getInstance();
-    this.sessionService = SessionService.getInstance(); // Added: Initialize session service
+    this.sessionService = SessionService.getInstance();
   }
 
-  /**
-   * Check if user can enter this page
-   */
-  public async beforeEnter(context: RouteContext): Promise<boolean> {
-    // Fixed: Use SessionService instead of directly checking sessionStorage
+  public async beforeEnter(_context: RouteContext): Promise<boolean> {
     if (this.sessionService.isAuthenticated()) {
       // User is authenticated, redirect to dashboard
       const router = (window as any).__APP__?.getInstance()?.getRouter();
@@ -40,10 +29,7 @@ export class HomePage implements PageComponent {
     return true;
   }
 
-  /**
-   * Render the home page
-   */
-  public async render(context: RouteContext): Promise<void> {
+  public async render(_context: RouteContext): Promise<void> {
     const html = `
       <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
         <!-- Header -->
@@ -127,58 +113,6 @@ export class HomePage implements PageComponent {
               </p>
             </div>
           </div>
-
-          <!-- Features Section -->
-          <div class="grid md:grid-cols-3 gap-8 mb-16">
-            <div class="text-center p-6">
-              <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span class="text-2xl">🔗</span>
-              </div>
-              <h3 class="text-xl font-semibold text-gray-900 mb-2">Easy URL Shortening</h3>
-              <p class="text-gray-600">
-                Transform long, complex URLs into short, shareable links in seconds.
-              </p>
-            </div>
-            
-            <div class="text-center p-6">
-              <div class="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span class="text-2xl">📊</span>
-              </div>
-              <h3 class="text-xl font-semibold text-gray-900 mb-2">Detailed Analytics</h3>
-              <p class="text-gray-600">
-                Track clicks, geographic data, and referrer information for your links.
-              </p>
-            </div>
-            
-            <div class="text-center p-6">
-              <div class="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span class="text-2xl">🔒</span>
-              </div>
-              <h3 class="text-xl font-semibold text-gray-900 mb-2">Secure & Reliable</h3>
-              <p class="text-gray-600">
-                Your links are secure, reliable, and backed by enterprise-grade infrastructure.
-              </p>
-            </div>
-          </div>
-
-          <!-- Demo Section -->
-          <div class="bg-white rounded-lg shadow-sm p-6 mb-16">
-            <h3 class="text-xl font-semibold text-gray-900 mb-4">Try these demo links:</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="text-center p-4 border border-gray-200 rounded">
-                <p class="font-mono text-blue-600 mb-2">/u/abc123</p>
-                <p class="text-sm text-gray-600">→ google.com</p>
-              </div>
-              <div class="text-center p-4 border border-gray-200 rounded">
-                <p class="font-mono text-blue-600 mb-2">/u/xyz789</p>
-                <p class="text-sm text-gray-600">→ github.com</p>
-              </div>
-              <div class="text-center p-4 border border-gray-200 rounded">
-                <p class="font-mono text-blue-600 mb-2">/u/test</p>
-                <p class="text-sm text-gray-600">→ example.com</p>
-              </div>
-            </div>
-          </div>
         </main>
 
         <!-- Login Modal -->
@@ -200,10 +134,9 @@ export class HomePage implements PageComponent {
                   type="email"
                   id="email"
                   required
-                  value="john@example.com"
+                  placeholder="Enter your email"
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
-                <p class="text-xs text-gray-500 mt-1">Demo email pre-filled</p>
               </div>
               
               <div class="mb-6">
@@ -214,10 +147,9 @@ export class HomePage implements PageComponent {
                   type="password"
                   id="password"
                   required
-                  value="password"
+                  placeholder="Enter your password"
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
-                <p class="text-xs text-gray-500 mt-1">Demo password: "password"</p>
               </div>
               
               <button
@@ -228,10 +160,6 @@ export class HomePage implements PageComponent {
                 Login
               </button>
             </form>
-            
-            <p class="text-center text-sm text-gray-600 mt-4">
-              Demo mode - use the pre-filled credentials to test the application.
-            </p>
           </div>
         </div>
       </div>
@@ -241,9 +169,6 @@ export class HomePage implements PageComponent {
     this.setupEventListeners();
   }
 
-  /**
-   * Setup event listeners for the page
-   */
   private setupEventListeners(): void {
     // Login button
     const loginBtn = document.getElementById('login-btn');
@@ -264,7 +189,6 @@ export class HomePage implements PageComponent {
       });
       this.eventListeners.push(listener);
 
-      // Enter key on input
       const enterListener = this.domManager.addEventListener(urlInput, 'keypress', (e) => {
         if (e.key === 'Enter') {
           this.handleUrlShorten(urlInput.value);
@@ -273,7 +197,7 @@ export class HomePage implements PageComponent {
       this.eventListeners.push(enterListener);
     }
 
-    // Modal close
+    // Modal controls
     const closeModal = document.getElementById('close-modal');
     if (closeModal) {
       const listener = this.domManager.addEventListener(closeModal, 'click', () => {
@@ -282,7 +206,6 @@ export class HomePage implements PageComponent {
       this.eventListeners.push(listener);
     }
 
-    // Modal background click
     const modal = document.getElementById('login-modal');
     if (modal) {
       const listener = this.domManager.addEventListener(modal, 'click', (e) => {
@@ -304,9 +227,6 @@ export class HomePage implements PageComponent {
     }
   }
 
-  /**
-   * Show login modal
-   */
   private showLoginModal(): void {
     const modal = document.getElementById('login-modal');
     if (modal) {
@@ -314,9 +234,6 @@ export class HomePage implements PageComponent {
     }
   }
 
-  /**
-   * Hide login modal
-   */
   private hideLoginModal(): void {
     const modal = document.getElementById('login-modal');
     if (modal) {
@@ -324,9 +241,6 @@ export class HomePage implements PageComponent {
     }
   }
 
-  /**
-   * Handle URL shortening using new API service
-   */
   private async handleUrlShorten(url: string): Promise<void> {
     if (!url || !this.isValidUrl(url)) {
       alert('Please enter a valid URL');
@@ -341,10 +255,8 @@ export class HomePage implements PageComponent {
       shortenBtn.disabled = true;
       shortenBtn.textContent = 'Shortening...';
 
-      // Fixed: Use correct API service method
       const result = await this.apiService.shortenUrl(url);
 
-      // Fixed: Check result structure correctly
       if (result.success && result.data?.fullShortUrl) {
         if (shortUrlInput) {
           shortUrlInput.value = result.data.fullShortUrl;
@@ -354,7 +266,6 @@ export class HomePage implements PageComponent {
           resultArea.classList.remove('hidden');
         }
 
-        // Setup copy functionality
         this.setupCopyButton(result.data.fullShortUrl);
       } else {
         alert(result.error || 'Failed to shorten URL');
@@ -369,13 +280,9 @@ export class HomePage implements PageComponent {
     }
   }
 
-  /**
-   * Setup copy button functionality
-   */
   private setupCopyButton(url: string): void {
     const copyBtn = document.getElementById('copy-btn');
     if (copyBtn) {
-      // Remove existing listener
       const newCopyBtn = copyBtn.cloneNode(true) as HTMLElement;
       copyBtn.parentNode?.replaceChild(newCopyBtn, copyBtn);
 
@@ -388,7 +295,6 @@ export class HomePage implements PageComponent {
           }, 2000);
         } catch (error) {
           console.error('Failed to copy:', error);
-          // Fallback for older browsers
           const textArea = document.createElement('textarea');
           textArea.value = url;
           document.body.appendChild(textArea);
@@ -406,9 +312,6 @@ export class HomePage implements PageComponent {
     }
   }
 
-  /**
- * Handle login form submission - SIMPLE DEBUG VERSION
- */
   private async handleLogin(): Promise<void> {
     const emailInput = document.getElementById('email') as HTMLInputElement;
     const passwordInput = document.getElementById('password') as HTMLInputElement;
@@ -421,65 +324,20 @@ export class HomePage implements PageComponent {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Logging in...';
 
-      console.log('🔐 HomePage: Starting login...');
-
-      // Use API service
       const result = await this.apiService.login(email, password);
 
-      console.log('🔐 HomePage: API service login returned:', result);
-      console.log('🔐 HomePage: Does result have session?', !!result.session);
-      console.log('🔐 HomePage: Session data:', result.session);
+      if (result.success && result.data?.user) {
+        // Set session with user data from API
+        this.sessionService.setSession(result.data.user);
+        
+        this.hideLoginModal();
 
-      if (result.success) {
-        console.log('✅ HomePage: Login successful, waiting...');
-
-        // Wait for state to update
-        await new Promise(resolve => setTimeout(resolve, 200));
-
-        // Check authentication
-        const isAuth = this.sessionService.isAuthenticated();
-        console.log('🔐 HomePage: isAuthenticated after delay:', isAuth);
-
-        // Check current session state
-        const sessionInfo = this.sessionService.getSessionInfo();
-        console.log('🔐 HomePage: Current session info:', sessionInfo);
-
-        if (isAuth) {
-          console.log('✅ HomePage: Authenticated - redirecting');
-          this.hideLoginModal();
-
-          const router = (window as any).__APP__?.getInstance()?.getRouter();
-          if (router) {
-            await router.push('/dashboard');
-          }
-        } else {
-          console.error('❌ HomePage: Not authenticated after successful login');
-
-          // Manual fix attempt
-          if (result.session?.isAuthenticated && result.session.user) {
-            console.log('🔧 HomePage: Attempting manual session update...');
-            this.sessionService.updateFromApiResponse(result);
-
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            const isAuthAfterManual = this.sessionService.isAuthenticated();
-            console.log('🔐 HomePage: isAuthenticated after manual update:', isAuthAfterManual);
-
-            if (isAuthAfterManual) {
-              this.hideLoginModal();
-              const router = (window as any).__APP__?.getInstance()?.getRouter();
-              if (router) {
-                await router.push('/dashboard');
-              }
-            } else {
-              alert('Session update failed. Please try again.');
-            }
-          } else {
-            alert('Authentication issue. Please try again.');
-          }
+        const router = (window as any).__APP__?.getInstance()?.getRouter();
+        if (router) {
+          await router.push('/dashboard');
         }
       } else {
-        alert(result.error || 'Login failed. Please try again.');
+        alert(result.error || result.message || 'Login failed. Please try again.');
       }
 
     } catch (error) {
@@ -491,9 +349,6 @@ export class HomePage implements PageComponent {
     }
   }
 
-  /**
-   * Validate URL format
-   */
   private isValidUrl(string: string): boolean {
     try {
       new URL(string);
@@ -503,19 +358,12 @@ export class HomePage implements PageComponent {
     }
   }
 
-  /**
-   * Cleanup event listeners and resources
-   */
   public cleanup(): void {
     this.eventListeners.forEach(cleanup => cleanup());
     this.eventListeners = [];
   }
 
-  /**
-   * Called after page is rendered
-   */
-  public async afterEnter(context: RouteContext): Promise<void> {
-    // Focus on URL input
+  public async afterEnter(_context: RouteContext): Promise<void> {
     const urlInput = document.getElementById('url-input') as HTMLInputElement;
     if (urlInput) {
       urlInput.focus();
