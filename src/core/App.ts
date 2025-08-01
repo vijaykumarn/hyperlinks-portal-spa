@@ -5,6 +5,8 @@ import type { Router } from './router/Router';
 import { createRouter, navigateTo, setPageManager } from './router';
 import { DOMManagerImpl } from './dom/DOMManager';
 import { PageManager } from '../pages/PageManager';
+import { StateManager } from '../core/state/StateManager';
+import { SessionService } from '../services/SessionService';
 
 /**
  * Main application class that bootstraps and manages the entire URL shortener SPA
@@ -16,6 +18,9 @@ export class App implements AppLifecycle {
   private pageManager: PageManager;
   private state: AppState;
   private eventListeners: Array<() => void> = [];
+
+  private stateManager: StateManager;
+  private sessionService: SessionService;
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -39,6 +44,9 @@ export class App implements AppLifecycle {
     this.handleRouteChange = this.handleRouteChange.bind(this);
     this.handleError = this.handleError.bind(this);
     this.handleUnhandledRejection = this.handleUnhandledRejection.bind(this);
+
+    this.stateManager = StateManager.getInstance();
+    this.sessionService = SessionService.getInstance();
   }
 
   /**

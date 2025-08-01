@@ -2,7 +2,29 @@
 
 import { App } from '../core/App';
 import type { AppConfig } from '../types/app';
+import { StateManager } from '../core/state/StateManager';
+import { SessionService } from '../services/SessionService';
+import { ApiService } from '../services/ApiService';
 import '../styles/main.css'; // Import your CSS
+
+
+// Initialize services
+const stateManager = StateManager.getInstance();
+const sessionService = SessionService.getInstance();
+
+// Initialize API service
+const apiService = ApiService.initialize({
+  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
+  useMockApi: import.meta.env.VITE_USE_MOCK_API === 'true' || import.meta.env.MODE === 'development'
+});
+
+// Make services globally available for debugging
+if (import.meta.env.MODE === 'development') {
+  (window as any).__STATE__ = stateManager;
+  (window as any).__SESSION__ = sessionService;
+  (window as any).__API__ = apiService;
+}
+
 
 /**
  * Application configuration
@@ -38,7 +60,7 @@ async function initializeApp(): Promise<void> {
 
   } catch (error) {
     console.error('Failed to start application:', error);
-    
+
     // Show error message to user
     const appRoot = document.getElementById('app');
     if (appRoot) {
@@ -60,7 +82,7 @@ async function initializeApp(): Promise<void> {
         </div>
       `;
     }
-    
+
     throw error;
   }
 }
@@ -188,7 +210,7 @@ async function bootstrap(): Promise<void> {
  */
 if (import.meta.hot) {
   import.meta.hot.accept();
-  
+
   import.meta.hot.dispose(() => {
     if (app) {
       console.log('HMR: Disposing app instance');
@@ -219,7 +241,7 @@ if (config.environment === 'development') {
  */
 bootstrap().catch((error) => {
   console.error('Critical startup error:', error);
-  
+
   // Last resort error display
   document.body.innerHTML = `
     <div style="
