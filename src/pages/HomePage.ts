@@ -1,15 +1,27 @@
-// src/pages/HomePage.ts - FIXED VERSION
+// src/pages/HomePage.ts - PRODUCTION VERSION WITH WORKING FORMS
 
 import type { PageComponent, DOMManager } from '../types/app';
 import type { RouteContext } from '../types/router';
 import { ApiService } from '../services/ApiService';
 import { SessionService } from '../services/SessionService';
+import { Modal, Button } from '../components/ui';
+import { LoginForm, UrlShortenForm } from '../components/forms';
 
 export class HomePage implements PageComponent {
   private domManager: DOMManager;
   private eventListeners: Array<() => void> = [];
   private apiService: ApiService;
   private sessionService: SessionService;
+  
+  // Component instances
+  private loginModal: Modal | null = null;
+  private loginForm: LoginForm | null = null;
+  private urlShortenForm: UrlShortenForm | null = null;
+  private loginButton: Button | null = null;
+  
+  // Component state
+  private shortenResult: { shortCode: string; fullShortUrl: string } | null = null;
+  private isLoading = false;
 
   constructor(domManager: DOMManager) {
     this.domManager = domManager;
@@ -19,7 +31,6 @@ export class HomePage implements PageComponent {
 
   public async beforeEnter(_context: RouteContext): Promise<boolean> {
     if (this.sessionService.isAuthenticated()) {
-      // User is authenticated, redirect to dashboard
       const router = (window as any).__APP__?.getInstance()?.getRouter();
       if (router) {
         router.replace('/dashboard');
@@ -40,12 +51,7 @@ export class HomePage implements PageComponent {
                 <h1 class="text-2xl font-bold text-gray-900">ShortURL</h1>
               </div>
               <div class="flex items-center space-x-4">
-                <button 
-                  id="login-btn" 
-                  class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
-                >
-                  Login
-                </button>
+                <div id="login-button-container"></div>
               </div>
             </div>
           </div>
@@ -53,7 +59,6 @@ export class HomePage implements PageComponent {
 
         <!-- Main Content -->
         <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <!-- Hero Section -->
           <div class="text-center mb-16">
             <h2 class="text-4xl font-bold text-gray-900 mb-4">
               Shorten Your URLs with Ease
@@ -63,272 +68,204 @@ export class HomePage implements PageComponent {
               manage your links, and get detailed analytics.
             </p>
             
-            <!-- URL Shortener Form -->
-            <div class="max-w-2xl mx-auto">
-              <div class="flex flex-col sm:flex-row gap-4">
-                <input
-                  type="url"
-                  id="url-input"
-                  placeholder="Enter your long URL here..."
-                  class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                />
-                <button
-                  id="shorten-btn"
-                  class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg transition-colors font-medium disabled:opacity-50"
-                >
-                  Shorten URL
-                </button>
-              </div>
-              
-              <!-- Result Area -->
-              <div id="result-area" class="mt-6 hidden">
-                <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                  <p class="text-sm text-gray-600 mb-2">Your shortened URL:</p>
-                  <div class="flex items-center gap-3">
-                    <input
-                      type="text"
-                      id="short-url"
-                      readonly
-                      class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded text-blue-600 font-mono"
-                    />
-                    <button
-                      id="copy-btn"
-                      class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded transition-colors"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Guest Notice -->
-              <p class="text-sm text-gray-500 mt-4">
-                <span class="inline-flex items-center">
-                  ℹ️ Guest mode: URLs expire in 24 hours. 
-                  <button id="signup-link" class="text-blue-600 hover:text-blue-700 ml-1 underline">
-                    Sign up
-                  </button> 
-                  for permanent links and analytics.
-                </span>
-              </p>
-            </div>
+            <div id="url-shorten-form-container"></div>
           </div>
         </main>
 
-        <!-- Login Modal -->
-        <div id="login-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
-            <div class="flex justify-between items-center mb-6">
-              <h3 class="text-xl font-semibold text-gray-900">Login to Your Account</h3>
-              <button id="close-modal" class="text-gray-400 hover:text-gray-600">
-                <span class="text-2xl">&times;</span>
-              </button>
-            </div>
-            
-            <form id="login-form">
-              <div class="mb-4">
-                <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  required
-                  placeholder="Enter your email"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                />
-              </div>
-              
-              <div class="mb-6">
-                <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  id="password"
-                  required
-                  placeholder="Enter your password"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                />
-              </div>
-              
-              <button
-                type="submit"
-                id="login-submit"
-                class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors font-medium disabled:opacity-50"
-              >
-                Login
-              </button>
-            </form>
-          </div>
-        </div>
+        <!-- Login Modal Container -->
+        <div id="login-modal-container"></div>
       </div>
     `;
 
     this.domManager.setContent(html);
-    this.setupEventListeners();
+    
+    setTimeout(() => {
+      this.initializeComponents();
+    }, 100);
   }
 
-  private setupEventListeners(): void {
-    // Login button
-    const loginBtn = document.getElementById('login-btn');
-    if (loginBtn) {
-      const listener = this.domManager.addEventListener(loginBtn, 'click', () => {
-        this.showLoginModal();
-      });
-      this.eventListeners.push(listener);
-    }
+  private initializeComponents(): void {
+    try {
+      console.log('🎨 Initializing HomePage components...');
 
-    // URL shortening
-    const shortenBtn = document.getElementById('shorten-btn');
-    const urlInput = document.getElementById('url-input') as HTMLInputElement;
-
-    if (shortenBtn && urlInput) {
-      const listener = this.domManager.addEventListener(shortenBtn, 'click', () => {
-        this.handleUrlShorten(urlInput.value);
-      });
-      this.eventListeners.push(listener);
-
-      const enterListener = this.domManager.addEventListener(urlInput, 'keypress', (e) => {
-        if (e.key === 'Enter') {
-          this.handleUrlShorten(urlInput.value);
+      // Initialize Login Button
+      this.loginButton = new Button({
+        props: {
+          variant: 'primary',
+          children: 'Login',
+          onClick: () => {
+            console.log('🔘 Login button clicked');
+            this.showLoginModal();
+          }
         }
       });
-      this.eventListeners.push(enterListener);
-    }
 
-    // Modal controls
-    const closeModal = document.getElementById('close-modal');
-    if (closeModal) {
-      const listener = this.domManager.addEventListener(closeModal, 'click', () => {
-        this.hideLoginModal();
-      });
-      this.eventListeners.push(listener);
-    }
-
-    const modal = document.getElementById('login-modal');
-    if (modal) {
-      const listener = this.domManager.addEventListener(modal, 'click', (e) => {
-        if (e.target === modal) {
-          this.hideLoginModal();
+      // Initialize URL Shortening Form
+      this.urlShortenForm = new UrlShortenForm({
+        props: {
+          onShorten: (url: string) => this.handleUrlShorten(url),
+          isLoading: this.isLoading,
+          result: this.shortenResult
         }
       });
-      this.eventListeners.push(listener);
-    }
 
-    // Login form
-    const loginForm = document.getElementById('login-form');
-    if (loginForm) {
-      const listener = this.domManager.addEventListener(loginForm, 'submit', (e) => {
-        e.preventDefault();
-        this.handleLogin();
+      // Initialize Login Form with proper validation
+      this.loginForm = new LoginForm({
+        props: {
+          onLogin: (credentials) => this.handleLogin(credentials),
+          isLoading: this.isLoading,
+          validation: {
+            email: (value: string) => {
+              if (!value) return 'Email is required';
+              if (!/\S+@\S+\.\S+/.test(value)) return 'Email is invalid';
+              return null;
+            },
+            password: (value: string) => {
+              if (!value) return 'Password is required';
+              if (value.length < 6) return 'Password must be at least 6 characters';
+              return null;
+            }
+          }
+        }
       });
-      this.eventListeners.push(listener);
+
+      // Initialize Login Modal
+      this.loginModal = new Modal({
+        props: {
+          isOpen: false,
+          title: 'Login to Your Account',
+          onClose: () => {
+            console.log('🔒 Modal close requested');
+            this.hideLoginModal();
+          },
+          children: '<div id="login-form-container"></div>'
+        }
+      });
+
+      this.mountComponents();
+      
+      console.log('✅ HomePage components initialized successfully');
+    } catch (error) {
+      console.error('❌ Error initializing HomePage components:', error);
+    }
+  }
+
+  private mountComponents(): void {
+    try {
+      const loginButtonContainer = document.getElementById('login-button-container');
+      const urlFormContainer = document.getElementById('url-shorten-form-container');
+      const modalContainer = document.getElementById('login-modal-container');
+
+      if (loginButtonContainer && this.loginButton) {
+        this.loginButton.mount(loginButtonContainer);
+        console.log('✅ Login button mounted');
+      }
+
+      if (urlFormContainer && this.urlShortenForm) {
+        this.urlShortenForm.mount(urlFormContainer);
+        console.log('✅ URL shorten form mounted');
+      }
+
+      if (modalContainer && this.loginModal) {
+        this.loginModal.mount(modalContainer);
+        console.log('✅ Login modal mounted');
+      }
+
+    } catch (error) {
+      console.error('❌ Error mounting components:', error);
     }
   }
 
   private showLoginModal(): void {
-    const modal = document.getElementById('login-modal');
-    if (modal) {
-      modal.classList.remove('hidden');
+    console.log('🔓 Showing login modal...');
+    
+    if (this.loginModal) {
+      this.loginModal.update({ isOpen: true });
+      
+      // Mount login form inside modal after a short delay
+      setTimeout(() => {
+        const loginFormContainer = document.getElementById('login-form-container');
+        if (loginFormContainer && this.loginForm) {
+          this.loginForm.mount(loginFormContainer);
+          console.log('✅ Login form mounted inside modal');
+        }
+      }, 50);
     }
   }
 
   private hideLoginModal(): void {
-    const modal = document.getElementById('login-modal');
-    if (modal) {
-      modal.classList.add('hidden');
+    console.log('🔒 Hiding login modal...');
+    
+    if (this.loginModal) {
+      this.loginModal.update({ isOpen: false });
     }
   }
 
-  private async handleUrlShorten(url: string): Promise<void> {
-    if (!url || !this.isValidUrl(url)) {
-      alert('Please enter a valid URL');
-      return;
+  private async handleUrlShorten(url: string): Promise<{ shortCode: string; fullShortUrl: string }> {
+    console.log('🔗 Shortening URL:', url);
+    
+    if (!this.isValidUrl(url)) {
+      throw new Error('Please enter a valid URL');
     }
 
-    const shortenBtn = document.getElementById('shorten-btn') as HTMLButtonElement;
-    const resultArea = document.getElementById('result-area');
-    const shortUrlInput = document.getElementById('short-url') as HTMLInputElement;
+    this.isLoading = true;
+    this.updateComponentsLoading();
 
     try {
-      shortenBtn.disabled = true;
-      shortenBtn.textContent = 'Shortening...';
-
       const result = await this.apiService.shortenUrl(url);
 
       if (result.success && result.data?.fullShortUrl) {
-        if (shortUrlInput) {
-          shortUrlInput.value = result.data.fullShortUrl;
+        this.shortenResult = {
+          shortCode: result.data.shortCode,
+          fullShortUrl: result.data.fullShortUrl
+        };
+
+        if (this.urlShortenForm) {
+          this.urlShortenForm.update({
+            result: this.shortenResult,
+            isLoading: false
+          });
         }
 
-        if (resultArea) {
-          resultArea.classList.remove('hidden');
-        }
-
-        this.setupCopyButton(result.data.fullShortUrl);
+        return this.shortenResult;
       } else {
-        alert(result.error || 'Failed to shorten URL');
+        throw new Error(result.error || 'Failed to shorten URL');
       }
 
     } catch (error) {
-      console.error('Error shortening URL:', error);
-      alert('Failed to shorten URL. Please try again.');
+      console.error('❌ Error shortening URL:', error);
+      throw error;
     } finally {
-      shortenBtn.disabled = false;
-      shortenBtn.textContent = 'Shorten URL';
+      this.isLoading = false;
+      this.updateComponentsLoading();
     }
   }
 
-  private setupCopyButton(url: string): void {
-    const copyBtn = document.getElementById('copy-btn');
-    if (copyBtn) {
-      const newCopyBtn = copyBtn.cloneNode(true) as HTMLElement;
-      copyBtn.parentNode?.replaceChild(newCopyBtn, copyBtn);
-
-      const listener = this.domManager.addEventListener(newCopyBtn, 'click', async () => {
-        try {
-          await navigator.clipboard.writeText(url);
-          newCopyBtn.textContent = 'Copied!';
-          setTimeout(() => {
-            newCopyBtn.textContent = 'Copy';
-          }, 2000);
-        } catch (error) {
-          console.error('Failed to copy:', error);
-          const textArea = document.createElement('textarea');
-          textArea.value = url;
-          document.body.appendChild(textArea);
-          textArea.select();
-          document.execCommand('copy');
-          document.body.removeChild(textArea);
-
-          newCopyBtn.textContent = 'Copied!';
-          setTimeout(() => {
-            newCopyBtn.textContent = 'Copy';
-          }, 2000);
-        }
-      });
-      this.eventListeners.push(listener);
+  private async handleLogin(credentials: { email: string; password: string }): Promise<void> {
+    console.log('🔐 Attempting login for:', credentials.email);
+    console.log('📊 Login credentials received:', {
+      email: credentials.email,
+      password: credentials.password ? '***' : 'MISSING',
+      emailLength: credentials.email?.length || 0,
+      passwordLength: credentials.password?.length || 0
+    });
+    
+    // Validate credentials before sending to API
+    if (!credentials.email || !credentials.password) {
+      const error = new Error('Email and password are required');
+      console.error('❌ Login validation failed:', credentials);
+      throw error;
     }
-  }
-
-  private async handleLogin(): Promise<void> {
-    const emailInput = document.getElementById('email') as HTMLInputElement;
-    const passwordInput = document.getElementById('password') as HTMLInputElement;
-    const submitBtn = document.getElementById('login-submit') as HTMLButtonElement;
-
-    const email = emailInput.value;
-    const password = passwordInput.value;
+    
+    this.isLoading = true;
+    this.updateComponentsLoading();
 
     try {
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Logging in...';
-
-      const result = await this.apiService.login(email, password);
+      const result = await this.apiService.login(credentials.email, credentials.password);
 
       if (result.success && result.data?.user) {
-        // Set session with user data from API
         this.sessionService.setSession(result.data.user);
+        console.log('✅ Login successful for user:', result.data.user.email);
         
         this.hideLoginModal();
 
@@ -337,15 +274,27 @@ export class HomePage implements PageComponent {
           await router.push('/dashboard');
         }
       } else {
-        alert(result.error || result.message || 'Login failed. Please try again.');
+        const error = new Error(result.error || result.message || 'Login failed. Please try again.');
+        console.error('❌ Login failed:', result);
+        throw error;
       }
 
     } catch (error) {
-      console.error('Login error:', error);
-      alert('Login failed. Please try again.');
+      console.error('❌ Login error:', error);
+      throw error;
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Login';
+      this.isLoading = false;
+      this.updateComponentsLoading();
+    }
+  }
+
+  private updateComponentsLoading(): void {
+    if (this.urlShortenForm) {
+      this.urlShortenForm.update({ isLoading: this.isLoading });
+    }
+    
+    if (this.loginForm) {
+      this.loginForm.update({ isLoading: this.isLoading });
     }
   }
 
@@ -359,14 +308,49 @@ export class HomePage implements PageComponent {
   }
 
   public cleanup(): void {
-    this.eventListeners.forEach(cleanup => cleanup());
-    this.eventListeners = [];
+    console.log('🧹 Cleaning up HomePage components...');
+    
+    try {
+      if (this.loginModal) {
+        this.loginModal.unmount();
+        this.loginModal = null;
+      }
+      
+      if (this.loginForm) {
+        this.loginForm.unmount();
+        this.loginForm = null;
+      }
+      
+      if (this.urlShortenForm) {
+        this.urlShortenForm.unmount();
+        this.urlShortenForm = null;
+      }
+      
+      if (this.loginButton) {
+        this.loginButton.unmount();
+        this.loginButton = null;
+      }
+
+      this.eventListeners.forEach(cleanup => cleanup());
+      this.eventListeners = [];
+
+      this.shortenResult = null;
+      this.isLoading = false;
+
+      console.log('✅ HomePage cleanup completed');
+      
+    } catch (error) {
+      console.error('❌ Error during HomePage cleanup:', error);
+    }
   }
 
   public async afterEnter(_context: RouteContext): Promise<void> {
-    const urlInput = document.getElementById('url-input') as HTMLInputElement;
-    if (urlInput) {
-      urlInput.focus();
-    }
+    setTimeout(() => {
+      const urlInput = document.querySelector('#url') as HTMLInputElement;
+      if (urlInput) {
+        urlInput.focus();
+        console.log('✅ URL input focused');
+      }
+    }, 200);
   }
 }
