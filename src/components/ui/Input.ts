@@ -1,4 +1,4 @@
-// src/components/ui/Input.ts - FIXED VERSION WITH PROPER VALUE HANDLING
+// src/components/ui/Input.ts - FIXED VERSION WITH TYPE SAFETY
 
 import { type ComponentProps, Component } from "../base/Component";
 
@@ -21,7 +21,7 @@ export class Input extends Component<InputProps> {
   private currentValue: string = '';
 
   protected setupEventListeners(): void {
-    const input = this.querySelector('input');
+    const input = this.querySelector<HTMLInputElement>('input');
     if (!input) {
       console.error('❌ Input element not found in Input component');
       return;
@@ -81,7 +81,7 @@ export class Input extends Component<InputProps> {
   }
 
   private syncValue(): void {
-    const input = this.querySelector('input');
+    const input = this.querySelector<HTMLInputElement>('input');
     if (input) {
       // Set value from props or current value
       const valueToSet = this.props.value || this.currentValue || '';
@@ -93,7 +93,7 @@ export class Input extends Component<InputProps> {
 
   public getValue(): string {
     // Always get the latest value from the DOM element
-    const input = this.querySelector('input');
+    const input = this.querySelector<HTMLInputElement>('input');
     if (input) {
       this.currentValue = input.value;
       console.log(`📤 Input ${this.props.name} getValue(): ${this.currentValue ? '***' : 'EMPTY'} (length: ${this.currentValue.length})`);
@@ -103,7 +103,7 @@ export class Input extends Component<InputProps> {
 
   public setValue(value: string): void {
     this.currentValue = value;
-    const input = this.querySelector('input');
+    const input = this.querySelector<HTMLInputElement>('input');
     if (input) {
       input.value = value;
       console.log(`📥 Input ${this.props.name} setValue(): ${value ? '***' : 'EMPTY'} (length: ${value.length})`);

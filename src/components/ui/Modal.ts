@@ -1,4 +1,4 @@
-// src/components/ui/Modal.ts - COMPLETELY FIXED MODAL
+// src/components/ui/Modal.ts - FIXED VERSION WITH NO UNUSED VARIABLES
 
 import { Component, type ComponentProps } from '../base/Component';
 
@@ -61,8 +61,7 @@ export class Modal extends Component<ModalProps> {
     const {
       isOpen = false,
       title = '',
-      children = '',
-      size = 'md'
+      children = ''
     } = this.props;
 
     console.log('🎭 Modal render called, isOpen:', isOpen);
@@ -70,13 +69,6 @@ export class Modal extends Component<ModalProps> {
     if (!isOpen) {
       return '<div style="display: none;"></div>';
     }
-
-    const sizeClasses = {
-      sm: 'max-w-md',
-      md: 'max-w-lg',
-      lg: 'max-w-2xl',
-      xl: 'max-w-4xl'
-    };
 
     return `
       <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">

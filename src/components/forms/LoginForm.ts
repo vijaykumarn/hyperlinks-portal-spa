@@ -1,4 +1,4 @@
-// src/components/forms/LoginForm.ts - FIXED VERSION WITH WORKING FORM DATA
+// src/components/forms/LoginForm.ts - FIXED VERSION WITH TYPE SAFETY
 
 import type { FormComponentProps } from "../base/FormComponent";
 import { FormComponent } from "../base/FormComponent";
@@ -200,9 +200,10 @@ export class LoginForm extends FormComponent<LoginFormProps> {
         }
       });
       
-      // Method 3: FormData as final fallback
+      // Method 3: FormData as final fallback - FIXED TYPE CASTING
       try {
-        const formData = new FormData(form);
+        const formElement = form as HTMLFormElement;
+        const formData = new FormData(formElement);
         for (const [key, value] of formData.entries()) {
           if (!data[key] && value) { // Only if not already captured and has value
             data[key] = value;
