@@ -1,4 +1,4 @@
-// src/components/base/Component.ts - FINAL FIXED VERSION
+// src/components/base/Component.ts - FIXED VERSION
 
 export interface ComponentProps {
   [key: string]: any;
@@ -71,11 +71,11 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
     // The component element is the content we just added
     this.el = target.firstElementChild as HTMLElement || target;
 
-    // Setup event listeners
-    this.setupEventListeners();
-
-    // Mark as mounted
+    // Mark as mounted BEFORE setting up event listeners
     this.isMountedFlag = true;
+
+    // Setup event listeners AFTER marking as mounted
+    this.setupEventListeners();
 
     // Call mounted hook
     this.onMounted();
@@ -122,7 +122,11 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
    */
   protected setState(newState: Partial<S>): void {
     this.state = { ...this.state, ...newState };
-    this.update(this.props);
+    
+    // Only update if mounted
+    if (this.isMountedFlag) {
+      this.update(this.props);
+    }
   }
 
   /**

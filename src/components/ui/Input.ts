@@ -35,15 +35,22 @@ export class Input extends Component<InputProps> {
       input.value = this.currentValue;
     }
 
-    // Handle input changes
+    // Handle input changes - FIXED to capture all input types
     this.addEventListener(input, 'input', (e) => {
       const target = e.target as HTMLInputElement;
       this.currentValue = target.value;
-      console.log(`📝 Input ${this.props.name} changed:`, this.currentValue ? '***' : 'EMPTY');
+      console.log(`📝 Input ${this.props.name} changed to: ${this.currentValue ? '***' : 'EMPTY'} (length: ${this.currentValue.length})`);
       
       if (this.props.onChange) {
         this.props.onChange(this.currentValue, e);
       }
+    });
+
+    // Also handle 'change' event for better compatibility
+    this.addEventListener(input, 'change', (e) => {
+      const target = e.target as HTMLInputElement;
+      this.currentValue = target.value;
+      console.log(`🔄 Input ${this.props.name} change event: ${this.currentValue ? '***' : 'EMPTY'} (length: ${this.currentValue.length})`);
     });
 
     // Handle blur events
@@ -59,24 +66,37 @@ export class Input extends Component<InputProps> {
       this.addEventListener(input, 'focus', this.props.onFocus);
     }
 
-    // Set form value immediately to ensure it's captured
-    input.value = this.currentValue;
+    // Sync value immediately
+    this.syncValue();
+  }
+
+  protected onMounted(): void {
+    // Ensure value is set after mounting
+    setTimeout(() => this.syncValue(), 0);
   }
 
   protected onUpdated(): void {
-    // Re-setup event listeners and preserve value after update
+    // Re-sync value after update
+    this.syncValue();
+  }
+
+  private syncValue(): void {
     const input = this.querySelector('input');
     if (input) {
-      input.value = this.currentValue;
+      // Set value from props or current value
+      const valueToSet = this.props.value || this.currentValue || '';
+      input.value = valueToSet;
+      this.currentValue = valueToSet;
+      console.log(`🔄 Input ${this.props.name} synced to: ${valueToSet ? '***' : 'EMPTY'} (length: ${valueToSet.length})`);
     }
-    this.setupEventListeners();
   }
 
   public getValue(): string {
-    // Also try to get value from DOM element as backup
+    // Always get the latest value from the DOM element
     const input = this.querySelector('input');
     if (input) {
       this.currentValue = input.value;
+      console.log(`📤 Input ${this.props.name} getValue(): ${this.currentValue ? '***' : 'EMPTY'} (length: ${this.currentValue.length})`);
     }
     return this.currentValue;
   }
@@ -86,6 +106,7 @@ export class Input extends Component<InputProps> {
     const input = this.querySelector('input');
     if (input) {
       input.value = value;
+      console.log(`📥 Input ${this.props.name} setValue(): ${value ? '***' : 'EMPTY'} (length: ${value.length})`);
     }
   }
 
@@ -102,7 +123,7 @@ export class Input extends Component<InputProps> {
       error = ''
     } = this.props;
 
-    // Ensure we use the current value
+    // Use current value if available, otherwise use prop value
     const displayValue = this.currentValue || value;
 
     const inputClasses = `
@@ -133,6 +154,7 @@ export class Input extends Component<InputProps> {
           class="${inputClasses}"
           ${disabled ? 'disabled' : ''}
           ${required ? 'required' : ''}
+          autocomplete="${type === 'email' ? 'email' : type === 'password' ? 'current-password' : 'off'}"
         />
         
         ${error ? `

@@ -1,4 +1,4 @@
-// src/components/forms/LoginForm.ts - PRODUCTION VERSION WITH WORKING FORM DATA
+// src/components/forms/LoginForm.ts - FIXED VERSION WITH WORKING FORM DATA
 
 import type { FormComponentProps } from "../base/FormComponent";
 import { FormComponent } from "../base/FormComponent";
@@ -39,24 +39,30 @@ export class LoginForm extends FormComponent<LoginFormProps> {
     this.emailInput = new Input({
       props: {
         type: 'email',
-        id: 'email',
+        id: 'login-email',
         name: 'email',
         label: 'Email Address',
         placeholder: 'Enter your email',
         required: true,
-        error: this.state.errors.email
+        error: this.state.errors.email,
+        onChange: (value: string) => {
+          console.log('📧 Email input changed:', value ? '***' : 'EMPTY');
+        }
       }
     });
 
     this.passwordInput = new Input({
       props: {
         type: 'password',
-        id: 'password',
+        id: 'login-password',
         name: 'password',
         label: 'Password',
         placeholder: 'Enter your password',
         required: true,
-        error: this.state.errors.password
+        error: this.state.errors.password,
+        onChange: (value: string) => {
+          console.log('🔒 Password input changed:', value ? '***' : 'EMPTY');
+        }
       }
     });
 
@@ -109,11 +115,9 @@ export class LoginForm extends FormComponent<LoginFormProps> {
 
   protected async handleSubmit(event: Event): Promise<void> {
     console.log('📝 LoginForm submission started...');
+    event.preventDefault(); // Prevent default form submission
     
-    // Call parent handleSubmit for validation
-    await super.handleSubmit(event);
-
-    // Get form data after validation
+    // Get form data FIRST, before validation
     const formData = this.getFormData();
     console.log('📊 Form data collected:', {
       email: formData.email || 'MISSING',
@@ -123,9 +127,19 @@ export class LoginForm extends FormComponent<LoginFormProps> {
       allKeys: Object.keys(formData)
     });
 
-    // If validation passed and we have onLogin handler
-    if (Object.keys(this.state.errors).length === 0 && this.props.onLogin) {
+    // Validate the collected data
+    const errors = this.validateForm(formData);
+    if (Object.keys(errors).length > 0) {
+      console.warn('⚠️ LoginForm validation failed:', errors);
+      this.setState({ errors, isSubmitting: false });
+      return;
+    }
+
+    // If we have onLogin handler and valid data, proceed
+    if (this.props.onLogin && formData.email && formData.password) {
       console.log('✅ LoginForm validation passed, calling onLogin...');
+      
+      this.setState({ isSubmitting: true, errors: {} });
       
       try {
         await this.props.onLogin({
@@ -138,10 +152,11 @@ export class LoginForm extends FormComponent<LoginFormProps> {
           errors: { general: 'Login failed. Please check your credentials.' },
           isSubmitting: false
         });
+      } finally {
+        this.setState({ isSubmitting: false });
       }
     } else {
-      console.warn('⚠️ LoginForm validation failed or no onLogin handler:', {
-        errors: this.state.errors,
+      console.warn('⚠️ LoginForm: Missing onLogin handler or form data:', {
         hasOnLogin: !!this.props.onLogin,
         formData: formData
       });
@@ -149,14 +164,14 @@ export class LoginForm extends FormComponent<LoginFormProps> {
   }
 
   /**
-   * Override getFormData to ensure we capture all form fields properly
+   * Enhanced getFormData to ensure we capture all form fields properly
    */
   protected getFormData(): Record<string, any> {
     console.log('📋 Getting form data...');
     
     const data: Record<string, any> = {};
     
-    // First, try to get data directly from our Input components
+    // Method 1: Get data directly from our Input components
     if (this.emailInput) {
       const emailValue = this.emailInput.getValue();
       data.email = emailValue;
@@ -169,28 +184,27 @@ export class LoginForm extends FormComponent<LoginFormProps> {
       console.log(`🔒 Password from component: ${passwordValue ? '***' : 'EMPTY'} (length: ${passwordValue?.length || 0})`);
     }
     
-    // Fallback: try to get form element
+    // Method 2: Fallback to form element scanning
     const form = this.querySelector('form');
     if (form) {
-      console.log('📋 Form element found, collecting data as fallback...');
+      console.log('📋 Form element found, scanning inputs as fallback...');
       
-      // Get all form elements
-      const formElements = form.querySelectorAll('input, select, textarea');
-      console.log('📋 Form elements found:', formElements.length);
+      // Get all input elements
+      const inputs = form.querySelectorAll('input');
+      console.log('📋 Input elements found:', inputs.length);
       
-      formElements.forEach((element: Element) => {
-        const input = element as HTMLInputElement;
-        if (input.name && !data[input.name]) { // Only if not already captured from components
+      inputs.forEach((input: HTMLInputElement) => {
+        if (input.name && input.value && !data[input.name]) {
           data[input.name] = input.value;
-          console.log(`📋 Field ${input.name}: ${input.value ? '***' : 'EMPTY'} (length: ${input.value?.length || 0})`);
+          console.log(`📋 Input ${input.name}: ${input.value ? '***' : 'EMPTY'} (length: ${input.value?.length || 0})`);
         }
       });
       
-      // Also try FormData approach as additional fallback
+      // Method 3: FormData as final fallback
       try {
         const formData = new FormData(form);
         for (const [key, value] of formData.entries()) {
-          if (!data[key]) { // Only if not already captured
+          if (!data[key] && value) { // Only if not already captured and has value
             data[key] = value;
             console.log(`📋 FormData ${key}: ${value ? '***' : 'EMPTY'} (length: ${value?.toString().length || 0})`);
           }

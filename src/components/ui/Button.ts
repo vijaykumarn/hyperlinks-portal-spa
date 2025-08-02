@@ -1,7 +1,4 @@
-
-// ========================================
-// src/components/ui/Button.ts - FINAL FIXED BUTTON
-// ========================================
+// src/components/ui/Button.ts - FIXED BUTTON WITH BETTER EVENT HANDLING
 
 import { Component, type ComponentProps } from '../base/Component';
 
@@ -26,20 +23,37 @@ export class Button extends Component<ButtonProps> {
     console.log('🔍 Button found:', !!button);
     console.log('🔍 Button tagName:', button?.tagName);
     console.log('🔍 onClick handler provided:', !!this.props.onClick);
+    console.log('🔍 Button type:', this.props.type);
     
-    if (button && button.tagName === 'BUTTON' && this.props.onClick) {
-      console.log('✅ Adding click listener to button');
-      this.addEventListener(button, 'click', (event: MouseEvent) => {
-        console.log('🔘 Button clicked!', event);
-        if (this.props.onClick) {
-          this.props.onClick(event);
-        }
-      });
+    if (button && button.tagName === 'BUTTON') {
+      // Only add click listener if:
+      // 1. onClick handler is provided, OR
+      // 2. Button type is 'submit' (for form submission)
+      if (this.props.onClick) {
+        console.log('✅ Adding click listener to button');
+        this.addEventListener(button, 'click', (event: MouseEvent) => {
+          console.log('🔘 Button clicked!', event);
+          
+          // Prevent default for submit buttons if they have onClick
+          if (this.props.type === 'submit') {
+            event.preventDefault();
+          }
+          
+          if (this.props.onClick) {
+            this.props.onClick(event);
+          }
+        });
+      } else if (this.props.type === 'submit') {
+        console.log('✅ Submit button - no click listener needed (form will handle)');
+      } else {
+        console.log('ℹ️ Button has no onClick handler and is not a submit button');
+      }
     } else {
       console.warn('⚠️ Button setup failed:', {
         button: !!button,
         tagName: button?.tagName,
-        onClick: !!this.props.onClick
+        onClick: !!this.props.onClick,
+        type: this.props.type
       });
     }
   }
@@ -79,7 +93,7 @@ export class Button extends Component<ButtonProps> {
         ${isDisabled ? 'disabled' : ''}
       >
         ${loading ? `
-          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
