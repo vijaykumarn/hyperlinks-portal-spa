@@ -1,4 +1,4 @@
-// src/components/auth/AuthModal.ts
+// src/components/auth/AuthModal.ts - FIXED ALL TYPE ERRORS
 
 import { Component, type ComponentProps } from '../base/Component';
 import { Modal } from '../ui';
@@ -46,13 +46,11 @@ export class AuthModal extends Component<AuthModalProps> {
   }
 
   private createChildComponents(): void {
-    const { mode, onClose, isLoading = false } = this.props;
-
     // Create modal wrapper
     this.modal = new Modal({
       props: {
-        isOpen: mode !== 'closed',
-        onClose,
+        isOpen: this.props.mode !== 'closed',
+        onClose: this.props.onClose,
         closeOnBackdrop: true,
         children: this.getModalContent()
       }
@@ -191,8 +189,8 @@ export class AuthModal extends Component<AuthModalProps> {
 
     container.appendChild(switchContainer);
 
-    // Add event listener for switch
-    const switchBtn = switchContainer.querySelector('#switch-to-register');
+    // Add event listener for switch - FIXED TYPE ERROR
+    const switchBtn = switchContainer.querySelector('#switch-to-register') as HTMLElement;
     if (switchBtn) {
       this.addEventListener(switchBtn, 'click', () => {
         this.switchMode('register');
@@ -230,8 +228,8 @@ export class AuthModal extends Component<AuthModalProps> {
       // Insert before the switch container
       container.insertBefore(googleContainer, switchContainer);
 
-      // Add event listener for Google login
-      const googleBtn = googleContainer.querySelector('#google-login-btn');
+      // Add event listener for Google login - FIXED TYPE ERROR
+      const googleBtn = googleContainer.querySelector('#google-login-btn') as HTMLElement;
       if (googleBtn) {
         this.addEventListener(googleBtn, 'click', () => {
           if (this.props.onGoogleAuth && !this.props.isLoading) {

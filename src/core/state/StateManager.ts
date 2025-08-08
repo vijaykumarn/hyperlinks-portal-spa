@@ -1,4 +1,4 @@
-// src/core/state/StateManager.ts - FIXED VERSION
+// src/core/state/StateManager.ts - FIXED MODAL STATE ISSUE
 
 import type { 
   AppState, 
@@ -8,7 +8,8 @@ import type {
   SessionState,
   UrlState,
   UIState,
-  AnalyticsState
+  AnalyticsState,
+  AuthState
 } from './types';
 import type { UserData } from '../../types/app';
 
@@ -48,7 +49,7 @@ export class StateManager {
   }
 
   /**
-   * Get initial state
+   * Get initial state - FIXED MODAL STATE
    */
   private getInitialState(): AppState {
     return {
@@ -56,6 +57,16 @@ export class StateManager {
         user: null,
         isAuthenticated: false,
         lastValidated: 0
+      },
+      auth: {
+        registrationStep: 'form',
+        registrationData: null,
+        oauth2State: null,
+        emailVerificationRequired: false,
+        emailForVerification: null,
+        verificationResendCooldown: null,
+        isLoading: false,
+        error: null
       },
       urls: {
         userUrls: [],
@@ -70,6 +81,9 @@ export class StateManager {
         notifications: [],
         modals: {
           login: false,
+          register: false,
+          emailVerification: false,
+          forgotPassword: false,
           createUrl: false
         }
       },
@@ -173,9 +187,8 @@ export class StateManager {
     this.notifySubscribers(previousState);
 
     // Log in development
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.MODE === 'development') {
       console.log('🔄 State Action:', action.type, action);
-      console.log('📊 New State:', this.state);
     }
   }
 
@@ -187,7 +200,7 @@ export class StateManager {
   }
 
   /**
-   * State reducer function
+   * State reducer function - FIXED ALL ACTION TYPES
    */
   private reducer(state: AppState, action: Action): AppState {
     switch (action.type) {
@@ -223,6 +236,77 @@ export class StateManager {
             ...state.session,
             lastValidated: Date.now()
           }
+        };
+
+      // Auth actions
+      case 'AUTH_SET_REGISTRATION_STEP':
+        return {
+          ...state,
+          auth: {
+            ...state.auth,
+            registrationStep: action.payload
+          }
+        };
+
+      case 'AUTH_SET_REGISTRATION_DATA':
+        return {
+          ...state,
+          auth: {
+            ...state.auth,
+            registrationData: action.payload
+          }
+        };
+
+      case 'AUTH_SET_OAUTH2_STATE':
+        return {
+          ...state,
+          auth: {
+            ...state.auth,
+            oauth2State: action.payload
+          }
+        };
+
+      case 'AUTH_SET_EMAIL_VERIFICATION':
+        return {
+          ...state,
+          auth: {
+            ...state.auth,
+            emailVerificationRequired: action.payload.required,
+            emailForVerification: action.payload.email
+          }
+        };
+
+      case 'AUTH_SET_VERIFICATION_COOLDOWN':
+        return {
+          ...state,
+          auth: {
+            ...state.auth,
+            verificationResendCooldown: action.payload
+          }
+        };
+
+      case 'AUTH_SET_LOADING':
+        return {
+          ...state,
+          auth: {
+            ...state.auth,
+            isLoading: action.payload
+          }
+        };
+
+      case 'AUTH_SET_ERROR':
+        return {
+          ...state,
+          auth: {
+            ...state.auth,
+            error: action.payload
+          }
+        };
+
+      case 'AUTH_CLEAR_STATE':
+        return {
+          ...state,
+          auth: this.getInitialState().auth
         };
 
       // URL actions
@@ -408,6 +492,7 @@ export class StateManager {
     this.dispatch({ type: 'SESSION_CLEAR' });
     this.state.urls = this.getInitialState().urls;
     this.state.analytics = this.getInitialState().analytics;
+    this.state.auth = this.getInitialState().auth;
     this.persistSessionState();
   }
 
@@ -416,6 +501,10 @@ export class StateManager {
    */
   public getSessionState(): Readonly<SessionState> {
     return { ...this.state.session };
+  }
+
+  public getAuthState(): Readonly<AuthState> {
+    return { ...this.state.auth };
   }
 
   public getUrlState(): Readonly<UrlState> {

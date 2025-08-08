@@ -1,4 +1,4 @@
-// src/services/auth/AuthService.ts
+// src/services/auth/AuthService.ts - COMPLETE IMPLEMENTATION
 
 import { StateManager } from '../../core/state/StateManager';
 import { AuthApiClient } from './AuthApiClient';
@@ -6,13 +6,13 @@ import { OAuth2Service } from './OAuth2Service';
 import type {
   RegistrationRequest,
   LoginRequest,
-  UserData,
+  UserData as AuthUserData,
   RegistrationStep,
   AuthError,
   AuthEvent,
-  EmailVerificationStatus,
   PasswordStrength
 } from './types';
+import type { UserData } from '../../types/app'; // App's UserData type
 import type { ApiResponse } from '../core/HttpClient';
 
 /**
@@ -39,6 +39,41 @@ export class AuthService {
       AuthService.instance = new AuthService();
     }
     return AuthService.instance;
+  }
+
+  // =====================================
+  // USER DATA MAPPING FUNCTIONS
+  // =====================================
+
+  /**
+   * Convert auth service UserData to app UserData
+   * FIXED: Proper mapping between different UserData types
+   */
+  private mapAuthUserToAppUser(authUser: AuthUserData): UserData {
+    return {
+      id: authUser.id,
+      email: authUser.email,
+      name: authUser.username || authUser.email.split('@')[0], // Use username or fallback to email prefix
+      role: authUser.role,
+      createdAt: authUser.createdAt
+    };
+  }
+
+  /**
+   * Convert login response to proper user data
+   * FIXED: Handle backend response format correctly
+   */
+  private mapLoginResponseToUser(loginData: any): UserData {
+    // Extract user data from the complex backend response
+    const userData = loginData.user || loginData;
+    
+    return {
+      id: (userData.userId || userData.id || '').toString(),
+      email: userData.email || '',
+      name: userData.username || userData.name || userData.email?.split('@')[0] || 'User',
+      role: userData.role || 'USER',
+      createdAt: userData.createdAt || Date.now()
+    };
   }
 
   // =====================================
@@ -89,9 +124,10 @@ export class AuthService {
         };
       }
 
-      // FIXED: Handle backend response format
-      const { id, email } = response.data;
-      const userId = id ? id.toString() : 'unknown';
+      // FIXED: Handle backend response format correctly
+      const responseData = response.data;
+      const userId = (responseData.userId || responseData.id || 'unknown').toString();
+      const email = responseData.email || registrationData.email;
 
       console.log('✅ AuthService: Registration successful:', { userId, email });
 
@@ -151,9 +187,10 @@ export class AuthService {
 
       // If user data is returned, they're now logged in
       if (response.data.user) {
-        this.setAuthenticatedUser(response.data.user);
-        this.emitEvent('verification:success', { user: response.data.user });
-        this.emitEvent('login:success', { user: response.data.user });
+        const appUser = this.mapAuthUserToAppUser(response.data.user);
+        this.setAuthenticatedUser(appUser);
+        this.emitEvent('verification:success', { user: appUser });
+        this.emitEvent('login:success', { user: appUser });
       } else {
         this.emitEvent('verification:success', {});
       }
@@ -162,7 +199,7 @@ export class AuthService {
 
       return {
         success: true,
-        user: response.data.user
+        user: response.data.user ? this.mapAuthUserToAppUser(response.data.user) : undefined
       };
 
     } catch (error) {
@@ -222,6 +259,7 @@ export class AuthService {
 
   /**
    * Login with email/password
+   * FIXED: Proper user data mapping and error handling
    */
   async login(credentials: LoginRequest): Promise<{
     success: boolean;
@@ -267,18 +305,8 @@ export class AuthService {
         };
       }
 
-      // FIXED: Extract user data from backend response format
-      const authData = response.data;
-      const user: UserData = {
-        id: authData.userId?.toString() || '',
-        username: authData.username || '',
-        email: authData.email || '',
-        organisation: authData.organisation,
-        emailVerified: true, // If login succeeded, email is verified
-        role: authData.role || 'USER',
-        createdAt: Date.now(),
-        lastLoginAt: authData.lastLogin ? new Date(authData.lastLogin).getTime() : Date.now()
-      };
+      // FIXED: Map backend response to app user format
+      const user = this.mapLoginResponseToUser(response.data);
 
       console.log('✅ AuthService: Login successful for user:', user.email);
 
@@ -365,14 +393,20 @@ export class AuthService {
 
       // Set authenticated user if login was successful
       if (result.user) {
-        this.setAuthenticatedUser(result.user);
-        this.emitEvent('oauth2:success', { user: result.user });
-        this.emitEvent('login:success', { user: result.user });
+        const appUser = this.mapAuthUserToAppUser(result.user);
+        this.setAuthenticatedUser(appUser);
+        this.emitEvent('oauth2:success', { user: appUser });
+        this.emitEvent('login:success', { user: appUser });
+
+        return {
+          success: true,
+          user: appUser,
+          redirectTo: result.requiresRedirect || '/dashboard'
+        };
       }
 
       return {
         success: true,
-        user: result.user,
         redirectTo: result.requiresRedirect || '/dashboard'
       };
 
@@ -423,6 +457,131 @@ export class AuthService {
   }
 
   // =====================================
+  // PASSWORD RESET METHODS
+  // =====================================
+
+  /**
+   * Request password reset
+   */
+  async requestPasswordReset(email: string): Promise<{
+    success: boolean;
+    error?: string;
+    message?: string;
+  }> {
+    try {
+      console.log('🔑 AuthService: Requesting password reset for:', email);
+
+      const response = await this.authApiClient.forgotPassword(email);
+
+      if (!response.success) {
+        console.error('❌ AuthService: Password reset request failed:', response.error);
+        return {
+          success: false,
+          error: response.error || 'Failed to request password reset'
+        };
+      }
+
+      console.log('✅ AuthService: Password reset email sent successfully');
+
+      return {
+        success: true,
+        message: response.data?.message || 'Password reset email sent'
+      };
+
+    } catch (error) {
+      console.error('❌ AuthService: Password reset request error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to request password reset'
+      };
+    }
+  }
+
+  /**
+   * Reset password with token
+   */
+  async resetPassword(token: string, newPassword: string): Promise<{
+    success: boolean;
+    error?: string;
+    message?: string;
+  }> {
+    try {
+      console.log('🔐 AuthService: Resetting password with token...');
+
+      // Validate new password
+      const passwordValidation = this.validatePassword(newPassword);
+      if (!passwordValidation.isValid) {
+        return {
+          success: false,
+          error: passwordValidation.feedback.join(', ')
+        };
+      }
+
+      const response = await this.authApiClient.resetPassword({
+        token,
+        newPassword
+      });
+
+      if (!response.success) {
+        console.error('❌ AuthService: Password reset failed:', response.error);
+        return {
+          success: false,
+          error: response.error || 'Failed to reset password'
+        };
+      }
+
+      console.log('✅ AuthService: Password reset successful');
+
+      return {
+        success: true,
+        message: response.data?.message || 'Password reset successful'
+      };
+
+    } catch (error) {
+      console.error('❌ AuthService: Password reset error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reset password'
+      };
+    }
+  }
+
+  /**
+   * Confirm password reset token validity
+   */
+  async confirmPasswordToken(token: string): Promise<{
+    valid: boolean;
+    error?: string;
+    message?: string;
+  }> {
+    try {
+      console.log('🔍 AuthService: Confirming password reset token...');
+
+      const response = await this.authApiClient.confirmPasswordToken(token);
+
+      if (!response.success) {
+        console.error('❌ AuthService: Token confirmation failed:', response.error);
+        return {
+          valid: false,
+          error: response.error || 'Invalid or expired token'
+        };
+      }
+
+      return {
+        valid: response.data?.valid || false,
+        message: response.data?.message
+      };
+
+    } catch (error) {
+      console.error('❌ AuthService: Token confirmation error:', error);
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : 'Failed to confirm token'
+      };
+    }
+  }
+
+  // =====================================
   // SESSION METHODS
   // =====================================
 
@@ -453,10 +612,11 @@ export class AuthService {
 
       if (valid && user) {
         // Update user data if session is valid
-        this.setAuthenticatedUser(user);
+        const appUser = this.mapAuthUserToAppUser(user);
+        this.setAuthenticatedUser(appUser);
         return {
           valid: true,
-          user
+          user: appUser
         };
       } else {
         console.warn('⚠️ AuthService: Session invalid');
@@ -471,6 +631,79 @@ export class AuthService {
       return {
         valid: false,
         error: error instanceof Error ? error.message : 'Session validation error'
+      };
+    }
+  }
+
+  /**
+   * Get all user sessions
+   */
+  async getAllSessions(): Promise<{
+    success: boolean;
+    sessions?: any[];
+    error?: string;
+  }> {
+    try {
+      console.log('📋 AuthService: Getting all sessions...');
+
+      const response = await this.authApiClient.getAllSessions();
+
+      if (!response.success) {
+        console.error('❌ AuthService: Failed to get sessions:', response.error);
+        return {
+          success: false,
+          error: response.error || 'Failed to retrieve sessions'
+        };
+      }
+
+      return {
+        success: true,
+        sessions: response.data || []
+      };
+
+    } catch (error) {
+      console.error('❌ AuthService: Get sessions error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to retrieve sessions'
+      };
+    }
+  }
+
+  /**
+   * Invalidate all sessions
+   */
+  async invalidateAllSessions(): Promise<{
+    success: boolean;
+    invalidatedCount?: number;
+    error?: string;
+  }> {
+    try {
+      console.log('🗑️ AuthService: Invalidating all sessions...');
+
+      const response = await this.authApiClient.invalidateAllSessions();
+
+      if (!response.success) {
+        console.error('❌ AuthService: Failed to invalidate sessions:', response.error);
+        return {
+          success: false,
+          error: response.error || 'Failed to invalidate sessions'
+        };
+      }
+
+      // Clear local session as well
+      this.clearAuthState();
+
+      return {
+        success: true,
+        invalidatedCount: response.data?.invalidatedCount || 0
+      };
+
+    } catch (error) {
+      console.error('❌ AuthService: Invalidate sessions error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to invalidate sessions'
       };
     }
   }
@@ -538,11 +771,11 @@ export class AuthService {
   }
 
   /**
-   * Validate password strength
+   * Validate password strength - FIXED TYPE ISSUES
    */
   validatePassword(password: string): PasswordStrength {
     const feedback: string[] = [];
-    let score: 0 | 1 | 2 | 3 | 4 = 0;
+    let score = 0; // Start as number
 
     if (!password) {
       return {
@@ -584,13 +817,17 @@ export class AuthService {
 
     const isValid = feedback.length === 0;
 
+    // FIXED: Proper score handling for longer passwords
+    if (isValid && password.length >= 12) {
+      score = Math.min(score + 1, 4);
+    }
+
     if (isValid) {
-      if (password.length >= 12) score = Math.min(score + 1, 4);
       feedback.push('Password strength: ' + ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'][score]);
     }
 
     return {
-      score: score as 0 | 1 | 2 | 3 | 4,
+      score: Math.min(score, 4) as 0 | 1 | 2 | 3 | 4, // Explicit cast to union type
       feedback,
       isValid
     };
@@ -616,6 +853,7 @@ export class AuthService {
    */
   private clearAuthState(): void {
     this.stateManager.dispatch({ type: 'SESSION_CLEAR' });
+    this.stateManager.dispatch({ type: 'AUTH_CLEAR_STATE' });
     this.clearAuthError();
     this.updateRegistrationStep('form');
   }
@@ -624,8 +862,10 @@ export class AuthService {
    * Update registration step
    */
   private updateRegistrationStep(step: RegistrationStep): void {
-    // Note: This would need to be added to the state manager
-    // For now, we'll handle it through events
+    this.stateManager.dispatch({
+      type: 'AUTH_SET_REGISTRATION_STEP',
+      payload: step
+    });
   }
 
   /**
@@ -633,7 +873,7 @@ export class AuthService {
    */
   private setAuthLoading(loading: boolean): void {
     this.stateManager.dispatch({
-      type: 'UI_SET_LOADING',
+      type: 'AUTH_SET_LOADING',
       payload: loading
     });
   }
@@ -643,7 +883,7 @@ export class AuthService {
    */
   private setAuthError(error: AuthError): void {
     this.stateManager.dispatch({
-      type: 'UI_SET_ERROR',
+      type: 'AUTH_SET_ERROR',
       payload: error.message
     });
   }
@@ -653,7 +893,7 @@ export class AuthService {
    */
   private clearAuthError(): void {
     this.stateManager.dispatch({
-      type: 'UI_SET_ERROR',
+      type: 'AUTH_SET_ERROR',
       payload: null
     });
   }
@@ -747,5 +987,58 @@ export class AuthService {
    */
   isOAuth2Callback(url?: string): boolean {
     return this.oauth2Service.isOAuth2Callback(url);
+  }
+
+  /**
+   * Get auth state for debugging
+   */
+  getAuthState(): {
+    isAuthenticated: boolean;
+    user: UserData | null;
+    registrationStep: RegistrationStep;
+    isLoading: boolean;
+    error: string | null;
+  } {
+    const sessionState = this.stateManager.getSessionState();
+    const authState = this.stateManager.getAuthState();
+    
+    return {
+      isAuthenticated: sessionState.isAuthenticated,
+      user: sessionState.user,
+      registrationStep: authState.registrationStep,
+      isLoading: authState.isLoading,
+      error: authState.error
+    };
+  }
+
+  /**
+   * Health check method
+   */
+  async healthCheck(): Promise<{
+    success: boolean;
+    status?: string;
+    error?: string;
+  }> {
+    try {
+      const response = await this.authApiClient.healthCheck();
+      
+      if (!response.success) {
+        return {
+          success: false,
+          error: response.error || 'Health check failed'
+        };
+      }
+
+      return {
+        success: true,
+        status: response.data?.status || 'OK'
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Health check error'
+      };
+    }
   }
 }

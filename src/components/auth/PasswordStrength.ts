@@ -1,4 +1,4 @@
-// src/components/auth/PasswordStrength.ts
+// src/components/auth/PasswordStrength.ts - FIXED TYPE ERRORS
 
 import { Component, type ComponentProps } from '../base/Component';
 import type { PasswordStrength } from '../../services/auth/types';
@@ -16,7 +16,7 @@ export class PasswordStrengthComponent extends Component<PasswordStrengthProps> 
 
   private calculatePasswordStrength(password: string): PasswordStrength {
     const feedback: string[] = [];
-    let score: 0 | 1 | 2 | 3 | 4 = 0;
+    let score = 0; // Start as number, cast to specific type later
 
     if (!password) {
       return {
@@ -42,7 +42,7 @@ export class PasswordStrengthComponent extends Component<PasswordStrengthProps> 
       }
     });
 
-    // Bonus points for longer passwords
+    // Bonus points for longer passwords - FIXED TYPE ERROR
     if (password.length >= 12) {
       score = Math.min(score + 1, 4);
     }
@@ -50,7 +50,7 @@ export class PasswordStrengthComponent extends Component<PasswordStrengthProps> 
     const isValid = feedback.length === 0;
 
     return {
-      score: score as 0 | 1 | 2 | 3 | 4,
+      score: Math.min(score, 4) as 0 | 1 | 2 | 3 | 4, // Explicit cast to union type
       feedback: isValid ? ['Password meets all requirements'] : feedback,
       isValid
     };

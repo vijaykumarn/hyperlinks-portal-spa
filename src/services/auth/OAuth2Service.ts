@@ -1,9 +1,8 @@
-// src/services/auth/OAuth2Service.ts
+// src/services/auth/OAuth2Service.ts - FIXED ALL TYPE ERRORS
 
 import { ApiConfig } from '../core/ApiConfig';
 import { AuthApiClient } from './AuthApiClient';
 import type { OAuth2State, OAuth2AuthUrlResponse } from './types';
-import type { ApiResponse } from '../core/HttpClient';
 
 /**
  * OAuth2 Service
@@ -51,7 +50,7 @@ export class OAuth2Service {
 
       const { authorizationUrl, state } = response.data;
 
-      // Store OAuth2 state
+      // Store OAuth2 state - FIXED: Ensure all required properties
       this.currentState = {
         state,
         provider: 'google',
@@ -136,6 +135,10 @@ export class OAuth2Service {
         };
       }
 
+      // Get redirect URL from stored state
+      const storedState = this.getCurrentState();
+      const redirectUrl = storedState?.redirectUrl;
+
       // Clear OAuth2 state
       this.clearOAuth2State();
 
@@ -144,7 +147,7 @@ export class OAuth2Service {
       return {
         success: true,
         user: sessionValidation.user,
-        requiresRedirect: this.currentState?.redirectUrl
+        requiresRedirect: redirectUrl
       };
 
     } catch (error) {
@@ -176,7 +179,7 @@ export class OAuth2Service {
   }
 
   /**
-   * Get current OAuth2 state
+   * Get current OAuth2 state - FIXED: Ensure proper return type
    */
   getCurrentState(): OAuth2State | null {
     if (this.currentState) {
@@ -187,7 +190,13 @@ export class OAuth2Service {
     try {
       const stored = sessionStorage.getItem('oauth2_state');
       if (stored) {
-        this.currentState = JSON.parse(stored);
+        const parsedState = JSON.parse(stored);
+        // Ensure the state matches our interface
+        this.currentState = {
+          state: parsedState.state,
+          provider: parsedState.provider === 'google' ? 'google' : undefined,
+          redirectUrl: parsedState.redirectUrl
+        };
         return { ...this.currentState };
       }
     } catch (error) {
@@ -311,15 +320,6 @@ export class OAuth2Service {
     const message = errorMessages[error] || 'An error occurred during Google login.';
     
     return description ? `${message} (${description})` : message;
-  }
-
-  /**
-   * Generate secure random state
-   */
-  private generateState(): string {
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
   }
 
   // =====================================

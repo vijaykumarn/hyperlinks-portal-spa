@@ -1,4 +1,4 @@
-// src/pages/HomePage.ts - UPDATED WITH NEW AUTH SERVICES
+// src/pages/HomePage.ts - FIXED AUTH INTEGRATION AND REDIRECTS
 
 import type { PageComponent, DOMManager } from '../types/app';
 import type { RouteContext } from '../types/router';
@@ -35,11 +35,9 @@ export class HomePage implements PageComponent {
 
   public async beforeEnter(_context: RouteContext): Promise<boolean> {
     if (this.sessionService.isAuthenticated()) {
-      const router = (window as any).__APP__?.getInstance()?.getRouter();
-      if (router) {
-        router.replace('/dashboard');
-        return false;
-      }
+      console.log('🏠 HomePage: User already authenticated, redirecting to dashboard');
+      await this.redirectToDashboard();
+      return false;
     }
     return true;
   }
@@ -123,6 +121,7 @@ export class HomePage implements PageComponent {
 
     this.domManager.setContent(html);
     
+    // Initialize components after a small delay to ensure DOM is ready
     setTimeout(() => {
       this.initializeComponents();
       this.setupAuthEventListeners();
@@ -131,133 +130,170 @@ export class HomePage implements PageComponent {
 
   private initializeComponents(): void {
     try {
-      console.log('🎨 Initializing HomePage components...');
+      console.log('🎨 HomePage: Initializing components...');
 
       // Initialize auth buttons
-      this.loginButton = new Button({
-        props: {
-          variant: 'secondary',
-          children: 'Sign In',
-          onClick: () => {
-            console.log('🔐 Login button clicked');
-            this.openAuthModal('login');
-          }
-        }
-      });
-
-      this.registerButton = new Button({
-        props: {
-          variant: 'primary',
-          children: 'Sign Up',
-          onClick: () => {
-            console.log('📝 Register button clicked');
-            this.openAuthModal('register');
-          }
-        }
-      });
-
+      this.createAuthButtons();
+      
       // Initialize URL Shortening Form
-      this.urlShortenForm = new UrlShortenForm({
-        props: {
-          onShorten: (url: string) => this.handleUrlShorten(url),
-          isLoading: this.isLoading,
-          result: this.shortenResult
-        }
-      });
+      this.createUrlShortenForm();
 
       // Initialize Auth Modal
-      this.authModal = new AuthModal({
-        props: {
-          mode: this.authModalMode,
-          onClose: () => this.closeAuthModal(),
-          onLogin: (credentials) => this.handleLogin(credentials),
-          onRegister: (data) => this.handleRegister(data),
-          onGoogleAuth: (mode) => this.handleGoogleAuth(mode),
-          onResendVerification: () => this.handleResendVerification(),
-          verificationEmail: this.verificationEmail,
-          isLoading: this.isLoading,
-          showGoogleOption: this.authService.isGoogleOAuth2Available()
-        }
-      });
+      this.createAuthModal();
 
+      // Mount all components
       this.mountComponents();
       
-      console.log('✅ HomePage components initialized successfully');
+      console.log('✅ HomePage: Components initialized successfully');
     } catch (error) {
-      console.error('❌ Error initializing HomePage components:', error);
+      console.error('❌ HomePage: Error initializing components:', error);
     }
+  }
+
+  private createAuthButtons(): void {
+    this.loginButton = new Button({
+      props: {
+        variant: 'secondary',
+        children: 'Sign In',
+        onClick: () => {
+          console.log('🔐 Login button clicked');
+          this.openAuthModal('login');
+        }
+      }
+    });
+
+    this.registerButton = new Button({
+      props: {
+        variant: 'primary',
+        children: 'Sign Up',
+        onClick: () => {
+          console.log('📝 Register button clicked');
+          this.openAuthModal('register');
+        }
+      }
+    });
+  }
+
+  private createUrlShortenForm(): void {
+    this.urlShortenForm = new UrlShortenForm({
+      props: {
+        onShorten: (url: string) => this.handleUrlShorten(url),
+        isLoading: this.isLoading,
+        result: this.shortenResult
+      }
+    });
+  }
+
+  private createAuthModal(): void {
+    this.authModal = new AuthModal({
+      props: {
+        mode: this.authModalMode,
+        onClose: () => this.closeAuthModal(),
+        onLogin: (credentials) => this.handleLogin(credentials),
+        onRegister: (data) => this.handleRegister(data),
+        onGoogleAuth: (mode) => this.handleGoogleAuth(mode),
+        onResendVerification: () => this.handleResendVerification(),
+        verificationEmail: this.verificationEmail,
+        isLoading: this.isLoading,
+        showGoogleOption: this.authService.isGoogleOAuth2Available()
+      }
+    });
   }
 
   private mountComponents(): void {
     try {
-      const loginButtonContainer = document.getElementById('login-button-container');
-      const registerButtonContainer = document.getElementById('register-button-container');
-      const urlFormContainer = document.getElementById('url-shorten-form-container');
-      const modalContainer = document.getElementById('auth-modal-container');
+      const containers = {
+        login: document.getElementById('login-button-container'),
+        register: document.getElementById('register-button-container'),
+        urlForm: document.getElementById('url-shorten-form-container'),
+        modal: document.getElementById('auth-modal-container')
+      };
 
-      if (loginButtonContainer && this.loginButton) {
-        this.loginButton.mount(loginButtonContainer);
+      // Check if containers exist
+      Object.entries(containers).forEach(([name, container]) => {
+        if (!container) {
+          console.warn(`⚠️ HomePage: ${name} container not found`);
+        }
+      });
+
+      // Mount components
+      if (containers.login && this.loginButton) {
+        this.loginButton.mount(containers.login);
         console.log('✅ Login button mounted');
       }
 
-      if (registerButtonContainer && this.registerButton) {
-        this.registerButton.mount(registerButtonContainer);
+      if (containers.register && this.registerButton) {
+        this.registerButton.mount(containers.register);
         console.log('✅ Register button mounted');
       }
 
-      if (urlFormContainer && this.urlShortenForm) {
-        this.urlShortenForm.mount(urlFormContainer);
+      if (containers.urlForm && this.urlShortenForm) {
+        this.urlShortenForm.mount(containers.urlForm);
         console.log('✅ URL shorten form mounted');
       }
 
-      if (modalContainer && this.authModal) {
-        this.authModal.mount(modalContainer);
+      if (containers.modal && this.authModal) {
+        this.authModal.mount(containers.modal);
         console.log('✅ Auth modal mounted');
       }
 
     } catch (error) {
-      console.error('❌ Error mounting components:', error);
+      console.error('❌ HomePage: Error mounting components:', error);
     }
   }
 
   private setupAuthEventListeners(): void {
-    // Listen for auth mode changes
-    const authModeChangeListener = this.domManager.addEventListener(
-      window,
-      'auth-mode-change',
-      (event: CustomEvent) => {
-        const newMode = event.detail.mode;
-        console.log('🔄 Auth mode change detected:', newMode);
-        this.authModalMode = newMode;
-        this.updateAuthModal();
-      }
-    );
-    this.eventListeners.push(authModeChangeListener);
+    try {
+      // Listen for auth mode changes
+      const authModeChangeListener = this.domManager.addEventListener(
+        window,
+        'auth-mode-change' as keyof WindowEventMap,
+        (event: Event) => {
+          const customEvent = event as CustomEvent;
+          const newMode = customEvent.detail.mode;
+          console.log('🔄 Auth mode change detected:', newMode);
+          this.authModalMode = newMode;
+          this.updateAuthModal();
+        }
+      );
+      this.eventListeners.push(authModeChangeListener);
 
-    // Listen for auth service events
+      // Listen for auth service events
+      this.setupAuthServiceListeners();
+
+    } catch (error) {
+      console.error('❌ HomePage: Error setting up auth listeners:', error);
+    }
+  }
+
+  private setupAuthServiceListeners(): void {
+    // Login success
     const loginSuccessListener = this.authService.addEventListener('login:success', (data) => {
-      console.log('✅ Login successful:', data.user.email);
+      console.log('✅ HomePage: Login successful:', data.user.email);
       this.closeAuthModal();
       this.redirectToDashboard();
     });
     this.eventListeners.push(() => loginSuccessListener());
 
+    // Registration success
     const registrationSuccessListener = this.authService.addEventListener('registration:success', (data) => {
-      console.log('✅ Registration successful:', data.userId);
+      console.log('✅ HomePage: Registration successful:', data.userId);
       // Don't close modal yet - wait for verification
     });
     this.eventListeners.push(() => registrationSuccessListener());
 
+    // Verification required
     const verificationRequiredListener = this.authService.addEventListener('verification:required', (data) => {
-      console.log('📧 Verification required for:', data.email);
+      console.log('📧 HomePage: Verification required for:', data.email);
       this.verificationEmail = data.email;
       this.authModalMode = 'verification';
       this.updateAuthModal();
     });
     this.eventListeners.push(() => verificationRequiredListener());
 
+    // Verification success
     const verificationSuccessListener = this.authService.addEventListener('verification:success', (data) => {
-      console.log('✅ Verification successful');
+      console.log('✅ HomePage: Verification successful');
       this.closeAuthModal();
       if (data.user) {
         this.redirectToDashboard();
@@ -265,23 +301,47 @@ export class HomePage implements PageComponent {
     });
     this.eventListeners.push(() => verificationSuccessListener());
 
+    // OAuth2 success
     const oauth2SuccessListener = this.authService.addEventListener('oauth2:success', (data) => {
-      console.log('✅ OAuth2 successful:', data.user.email);
+      console.log('✅ HomePage: OAuth2 successful:', data.user.email);
       this.closeAuthModal();
       this.redirectToDashboard();
     });
     this.eventListeners.push(() => oauth2SuccessListener());
+
+    // Error handlers
+    const loginFailedListener = this.authService.addEventListener('login:failed', (data) => {
+      console.error('❌ HomePage: Login failed:', data.error);
+      this.isLoading = false;
+      this.updateComponentsLoading();
+    });
+    this.eventListeners.push(() => loginFailedListener());
+
+    const registrationFailedListener = this.authService.addEventListener('registration:failed', (data) => {
+      console.error('❌ HomePage: Registration failed:', data.error);
+      this.isLoading = false;
+      this.updateComponentsLoading();
+    });
+    this.eventListeners.push(() => registrationFailedListener());
+
+    const oauth2FailedListener = this.authService.addEventListener('oauth2:failed', (data) => {
+      console.error('❌ HomePage: OAuth2 failed:', data.error);
+      this.isLoading = false;
+      this.updateComponentsLoading();
+    });
+    this.eventListeners.push(() => oauth2FailedListener());
   }
 
   private openAuthModal(mode: 'login' | 'register'): void {
-    console.log('🔓 Opening auth modal in mode:', mode);
+    console.log('🔓 HomePage: Opening auth modal in mode:', mode);
     this.authModalMode = mode;
     this.updateAuthModal();
   }
 
   private closeAuthModal(): void {
-    console.log('🔒 Closing auth modal');
+    console.log('🔒 HomePage: Closing auth modal');
     this.authModalMode = 'closed';
+    this.verificationEmail = null;
     this.updateAuthModal();
   }
 
@@ -296,7 +356,7 @@ export class HomePage implements PageComponent {
   }
 
   private async handleLogin(credentials: LoginRequest): Promise<void> {
-    console.log('🔐 Handling login for:', credentials.email);
+    console.log('🔐 HomePage: Handling login for:', credentials.email);
     
     this.isLoading = true;
     this.updateComponentsLoading();
@@ -305,10 +365,10 @@ export class HomePage implements PageComponent {
       const result = await this.authService.login(credentials);
 
       if (result.success && result.user) {
-        console.log('✅ Login successful');
-        // Auth service event listeners will handle UI updates
+        console.log('✅ HomePage: Login successful');
+        // Auth service event listeners will handle UI updates and redirect
       } else if (result.requiresVerification) {
-        console.log('📧 Login requires verification');
+        console.log('📧 HomePage: Login requires verification');
         this.verificationEmail = credentials.email;
         this.authModalMode = 'verification';
         this.updateAuthModal();
@@ -316,9 +376,8 @@ export class HomePage implements PageComponent {
         throw new Error(result.error || 'Login failed');
       }
     } catch (error) {
-      console.error('❌ Login failed:', error);
-      // Error will be shown by the form component
-      throw error;
+      console.error('❌ HomePage: Login failed:', error);
+      throw error; // Let the form component handle the error display
     } finally {
       this.isLoading = false;
       this.updateComponentsLoading();
@@ -326,7 +385,7 @@ export class HomePage implements PageComponent {
   }
 
   private async handleRegister(data: RegistrationRequest): Promise<void> {
-    console.log('📝 Handling registration for:', data.email);
+    console.log('📝 HomePage: Handling registration for:', data.email);
     
     this.isLoading = true;
     this.updateComponentsLoading();
@@ -335,7 +394,7 @@ export class HomePage implements PageComponent {
       const result = await this.authService.register(data);
 
       if (result.success) {
-        console.log('✅ Registration successful');
+        console.log('✅ HomePage: Registration successful');
         
         if (result.verificationRequired) {
           this.verificationEmail = data.email;
@@ -350,8 +409,8 @@ export class HomePage implements PageComponent {
         throw new Error(result.error || 'Registration failed');
       }
     } catch (error) {
-      console.error('❌ Registration failed:', error);
-      throw error;
+      console.error('❌ HomePage: Registration failed:', error);
+      throw error; // Let the form component handle the error display
     } finally {
       this.isLoading = false;
       this.updateComponentsLoading();
@@ -359,23 +418,24 @@ export class HomePage implements PageComponent {
   }
 
   private async handleGoogleAuth(mode: 'login' | 'register'): Promise<void> {
-    console.log('🔗 Handling Google auth for:', mode);
+    console.log('🔗 HomePage: Handling Google auth for:', mode);
     
     this.isLoading = true;
     this.updateComponentsLoading();
 
     try {
+      // Use dashboard as redirect URL for successful OAuth2
       const result = await this.authService.loginWithGoogle('/dashboard');
 
       if (result.success && result.authUrl) {
-        console.log('✅ Google auth URL obtained, redirecting...');
+        console.log('✅ HomePage: Google auth URL obtained, redirecting...');
         // Redirect to Google OAuth2
         window.location.href = result.authUrl;
       } else {
         throw new Error(result.error || 'Failed to initiate Google authentication');
       }
     } catch (error) {
-      console.error('❌ Google auth failed:', error);
+      console.error('❌ HomePage: Google auth failed:', error);
       this.isLoading = false;
       this.updateComponentsLoading();
       throw error;
@@ -384,11 +444,11 @@ export class HomePage implements PageComponent {
 
   private async handleResendVerification(): Promise<void> {
     if (!this.verificationEmail) {
-      console.error('❌ No verification email available');
+      console.error('❌ HomePage: No verification email available');
       return;
     }
 
-    console.log('📧 Resending verification email to:', this.verificationEmail);
+    console.log('📧 HomePage: Resending verification email to:', this.verificationEmail);
     
     this.isLoading = true;
     this.updateComponentsLoading();
@@ -397,7 +457,7 @@ export class HomePage implements PageComponent {
       const result = await this.authService.resendVerificationEmail(this.verificationEmail);
 
       if (result.success) {
-        console.log('✅ Verification email resent successfully');
+        console.log('✅ HomePage: Verification email resent successfully');
         // Update cooldown if provided
         if (this.authModal && result.nextResendAt) {
           const cooldownSeconds = Math.ceil((result.nextResendAt - Date.now()) / 1000);
@@ -407,7 +467,7 @@ export class HomePage implements PageComponent {
         throw new Error(result.error || 'Failed to resend verification email');
       }
     } catch (error) {
-      console.error('❌ Failed to resend verification:', error);
+      console.error('❌ HomePage: Failed to resend verification:', error);
       throw error;
     } finally {
       this.isLoading = false;
@@ -416,7 +476,7 @@ export class HomePage implements PageComponent {
   }
 
   private async handleUrlShorten(url: string): Promise<{ shortCode: string; fullShortUrl: string }> {
-    console.log('🔗 Shortening URL:', url);
+    console.log('🔗 HomePage: Shortening URL:', url);
     
     if (!this.isValidUrl(url)) {
       throw new Error('Please enter a valid URL');
@@ -450,7 +510,7 @@ export class HomePage implements PageComponent {
       return this.shortenResult;
 
     } catch (error) {
-      console.error('❌ Error shortening URL:', error);
+      console.error('❌ HomePage: Error shortening URL:', error);
       throw error;
     } finally {
       this.isLoading = false;
@@ -486,19 +546,37 @@ export class HomePage implements PageComponent {
     }
   }
 
-  private redirectToDashboard(): void {
-    const router = (window as any).__APP__?.getInstance()?.getRouter();
-    if (router) {
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 500); // Small delay for better UX
+  private async redirectToDashboard(): Promise<void> {
+    console.log('🎯 HomePage: Redirecting to dashboard...');
+    
+    try {
+      // Get router instance from global app
+      const app = (window as any).__APP__?.getInstance?.();
+      if (app) {
+        const router = app.getRouter();
+        if (router) {
+          await router.push('/dashboard');
+          console.log('✅ HomePage: Successfully redirected to dashboard');
+          return;
+        }
+      }
+      
+      // Fallback to window.location if router not available
+      console.warn('⚠️ HomePage: Router not available, using window.location');
+      window.location.href = '/dashboard';
+      
+    } catch (error) {
+      console.error('❌ HomePage: Error redirecting to dashboard:', error);
+      // Last resort fallback
+      window.location.href = '/dashboard';
     }
   }
 
   public cleanup(): void {
-    console.log('🧹 Cleaning up HomePage components...');
+    console.log('🧹 HomePage: Cleaning up components...');
     
     try {
+      // Cleanup components
       if (this.authModal) {
         this.authModal.unmount();
         this.authModal = null;
@@ -519,27 +597,30 @@ export class HomePage implements PageComponent {
         this.registerButton = null;
       }
 
+      // Cleanup event listeners
       this.eventListeners.forEach(cleanup => cleanup());
       this.eventListeners = [];
 
+      // Reset state
       this.shortenResult = null;
       this.isLoading = false;
       this.authModalMode = 'closed';
       this.verificationEmail = null;
 
-      console.log('✅ HomePage cleanup completed');
+      console.log('✅ HomePage: Cleanup completed');
       
     } catch (error) {
-      console.error('❌ Error during HomePage cleanup:', error);
+      console.error('❌ HomePage: Error during cleanup:', error);
     }
   }
 
   public async afterEnter(_context: RouteContext): Promise<void> {
+    // Focus on URL input after page loads
     setTimeout(() => {
       const urlInput = document.querySelector('#url') as HTMLInputElement;
       if (urlInput) {
         urlInput.focus();
-        console.log('✅ URL input focused');
+        console.log('✅ HomePage: URL input focused');
       }
     }, 200);
   }

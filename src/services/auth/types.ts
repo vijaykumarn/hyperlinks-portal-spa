@@ -1,4 +1,4 @@
-// src/services/auth/types.ts
+// src/services/auth/types.ts - COMPLETE TYPE DEFINITIONS WITH EXPORTS
 
 /**
  * Registration request DTO matching backend
@@ -18,6 +18,7 @@ export interface RegistrationRequest {
 export interface RegistrationResponse {
   message: string;
   userId: string;
+  id?: string; // Some backends return 'id' instead of 'userId'
   email: string;
   verificationRequired: boolean;
 }
@@ -32,7 +33,7 @@ export interface LoginRequest {
 }
 
 /**
- * User data structure
+ * User data structure for auth service
  */
 export interface UserData {
   id: string;
@@ -49,7 +50,13 @@ export interface UserData {
  * Login response from backend
  */
 export interface LoginResponse {
-  user: UserData;
+  user?: UserData;
+  userId?: string;
+  username?: string;
+  email?: string;
+  role?: string;
+  organisation?: string;
+  lastLogin?: string;
   message: string;
 }
 
@@ -124,8 +131,8 @@ export interface OAuth2AuthUrlResponse {
  * OAuth2 callback state
  */
 export interface OAuth2State {
-  state: string;
-  provider: 'google';
+  state?: string;
+  provider?: 'google';
   redirectUrl?: string;
 }
 
@@ -149,19 +156,6 @@ export type RegistrationStep =
   | 'submitting'     // Form submission in progress
   | 'verification'   // Email verification required
   | 'complete';      // Registration complete
-
-/**
- * Auth state for state management
- */
-export interface AuthState {
-  user: UserData | null;
-  isAuthenticated: boolean;
-  registrationStep: RegistrationStep;
-  registrationData: Partial<RegistrationRequest> | null;
-  oauth2State: OAuth2State | null;
-  isLoading: boolean;
-  error: string | null;
-}
 
 /**
  * Password strength validation result
@@ -209,3 +203,6 @@ export interface AuthError {
   details?: any;
   field?: string; // For validation errors
 }
+
+// Export the AuthModalMode type that was missing
+export type AuthModalMode = 'login' | 'register' | 'verification' | 'closed';
