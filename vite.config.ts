@@ -42,11 +42,11 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    open: true,
+    open: false,
     // Proxy API requests to your Spring Boot backend
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8090',
         changeOrigin: true,
         secure: false,
         // Handle cookies for authentication
