@@ -1,4 +1,4 @@
-// vite.config.ts
+// vite.config.ts - UPDATED FOR DUAL BACKEND
 
 import { defineConfig } from 'vite';
 
@@ -14,8 +14,24 @@ export default defineConfig({
     rollupOptions: {
       output: {
          manualChunks: {
-          // Router chunk for better caching
+          // Core chunks
           router: ['./src/core/router/index.ts'],
+          state: ['./src/core/state/StateManager.ts'],
+          
+          // Service chunks for better caching
+          'auth-services': [
+            './src/services/auth/AuthService.ts',
+            './src/services/auth/AuthApiClient.ts',
+            './src/services/auth/OAuth2Service.ts'
+          ],
+          
+          // Component chunks
+          'auth-components': [
+            './src/components/auth/RegistrationForm.ts',
+            './src/components/auth/EmailVerification.ts',
+            './src/components/auth/AuthModal.ts'
+          ],
+          
           // Pages chunk for lazy loading
           pages: [
             './src/pages/HomePage.ts',
@@ -43,24 +59,87 @@ export default defineConfig({
     port: 5173,
     host: true,
     open: true,
-    // Proxy API requests to your Spring Boot backend
+    // Proxy configuration for dual backend setup
     proxy: {
-      '/api': {
+      // Auth Server routes
+      '/api/auth': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('Auth Server proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Sending auth request to target', req.method, req.url);
+            // Ensure credentials are forwarded
+            proxyReq.setHeader('Access-Control-Allow-Credentials', 'true');
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('Received auth response from target', proxyRes.statusCode, req.url);
+          });
+        }
+      },
+      
+      // Session routes (also go to Auth Server)
+      '/api/session': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('Session proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Sending session request to target', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('Received session response from target', proxyRes.statusCode, req.url);
+          });
+        }
+      },
+      
+      // Resource Server routes (URLs, QR codes, etc.)
+      '/api/urls': {
         target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
-        // Handle cookies for authentication
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
-            console.log('Proxy error', err);
+            console.log('Resource Server proxy error', err);
           });
           proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('Sending request to the target', req.method, req.url);
+            console.log('Sending resource request to target', req.method, req.url);
           });
           proxy.on('proxyRes', (proxyRes, req, _res) => {
-            console.log('Received response from the target', proxyRes.statusCode, req.url);
+            console.log('Received resource response from target', proxyRes.statusCode, req.url);
           });
         }
+      },
+      
+      '/api/qr-codes': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      },
+      
+      '/api/barcodes': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      },
+      
+      '/api/analytics': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      },
+      
+      // Health checks - route to both servers
+      '/api/health': {
+        target: 'http://localhost:8090', // Primary health check to auth server
+        changeOrigin: true,
+        secure: false
       }
     }
   },
@@ -68,28 +147,48 @@ export default defineConfig({
   // Preview server (for production build testing)
   preview: {
     port: 4173,
-    host: true
-  },
-
-  /*
-  // Path resolution
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-      '@/components': resolve(__dirname, 'src/components'),
-      '@/pages': resolve(__dirname, 'src/pages'),
-      '@/core': resolve(__dirname, 'src/core'),
-      '@/types': resolve(__dirname, 'src/types'),
-      '@/utils': resolve(__dirname, 'src/utils'),
-      '@/styles': resolve(__dirname, 'src/styles')
+    host: true,
+    // Same proxy configuration for preview
+    proxy: {
+      '/api/auth': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+        secure: false
+      },
+      '/api/session': {
+        target: 'http://localhost:8090',
+        changeOrigin: true,
+        secure: false
+      },
+      '/api/urls': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      },
+      '/api/qr-codes': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      },
+      '/api/barcodes': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      },
+      '/api/analytics': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      }
     }
   },
-  */
 
   // Environment variables
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString())
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __AUTH_SERVER_URL__: JSON.stringify(process.env.VITE_AUTH_SERVER_URL || 'http://localhost:8090'),
+    __RESOURCE_SERVER_URL__: JSON.stringify(process.env.VITE_RESOURCE_SERVER_URL || 'http://localhost:8080')
   },
 
   // CSS configuration
@@ -115,5 +214,13 @@ export default defineConfig({
   // Worker configuration
   worker: {
     format: 'es'
+  },
+
+  // Test configuration (if using Vitest)
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}']
   }
 });

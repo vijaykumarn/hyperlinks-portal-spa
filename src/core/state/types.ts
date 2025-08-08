@@ -1,6 +1,7 @@
-// src/core/state/types.ts
+// src/core/state/types.ts - ENHANCED VERSION
 
 import type { UserData, UrlData, AnalyticsData } from '../../types/app';
+import type { RegistrationRequest, RegistrationStep, OAuth2State } from '../../services/auth/types';
 
 /**
  * Session state (NO TOKENS - HttpOnly cookies only)
@@ -9,6 +10,20 @@ export interface SessionState {
   user: UserData | null;
   isAuthenticated: boolean;
   lastValidated: number;
+}
+
+/**
+ * Enhanced Auth state for registration and OAuth2 flows
+ */
+export interface AuthState {
+  registrationStep: RegistrationStep;
+  registrationData: Partial<RegistrationRequest> | null;
+  oauth2State: OAuth2State | null;
+  emailVerificationRequired: boolean;
+  emailForVerification: string | null;
+  verificationResendCooldown: number | null;
+  isLoading: boolean;
+  error: string | null;
 }
 
 /**
@@ -31,6 +46,9 @@ export interface UIState {
   notifications: Notification[];
   modals: {
     login: boolean;
+    register: boolean;
+    emailVerification: boolean;
+    forgotPassword: boolean;
     createUrl: boolean;
   };
 }
@@ -43,6 +61,16 @@ export interface Notification {
   type: 'success' | 'error' | 'warning' | 'info';
   message: string;
   duration?: number;
+  actions?: NotificationAction[];
+}
+
+/**
+ * Notification action
+ */
+export interface NotificationAction {
+  label: string;
+  action: () => void;
+  style?: 'primary' | 'secondary';
 }
 
 /**
@@ -60,6 +88,7 @@ export interface AnalyticsState {
  */
 export interface AppState {
   session: SessionState;
+  auth: AuthState;
   urls: UrlState;
   ui: UIState;
   analytics: AnalyticsState;
@@ -73,6 +102,16 @@ export type Action =
   | { type: 'SESSION_SET'; payload: { user: UserData; isAuthenticated: boolean } }
   | { type: 'SESSION_CLEAR' }
   | { type: 'SESSION_UPDATE_TIMESTAMP' }
+  
+  // Auth actions
+  | { type: 'AUTH_SET_REGISTRATION_STEP'; payload: RegistrationStep }
+  | { type: 'AUTH_SET_REGISTRATION_DATA'; payload: Partial<RegistrationRequest> | null }
+  | { type: 'AUTH_SET_OAUTH2_STATE'; payload: OAuth2State | null }
+  | { type: 'AUTH_SET_EMAIL_VERIFICATION'; payload: { required: boolean; email: string | null } }
+  | { type: 'AUTH_SET_VERIFICATION_COOLDOWN'; payload: number | null }
+  | { type: 'AUTH_SET_LOADING'; payload: boolean }
+  | { type: 'AUTH_SET_ERROR'; payload: string | null }
+  | { type: 'AUTH_CLEAR_STATE' }
   
   // URL actions
   | { type: 'URLS_SET_USER_URLS'; payload: UrlData[] }
