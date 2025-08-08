@@ -6,7 +6,7 @@ import { StateManager } from '../core/state/StateManager';
 import { SessionService } from '../services/SessionService';
 import { AuthService } from '../services/auth/AuthService';
 import { ApiConfig } from '../services/core/ApiConfig';
-import { ApiService } from '../services/ApiService'; // ADDED: Import ApiService
+import { ApiService } from '../services/ApiService';
 import '../styles/main.css';
 
 // Initialize API configuration first
@@ -37,7 +37,7 @@ if (import.meta.env.MODE === 'development') {
   (window as any).__SESSION__ = sessionService;
   (window as any).__AUTH__ = authService;
   (window as any).__API_CONFIG__ = apiConfig;
-  (window as any).__API_SERVICE__ = apiService; // ADDED: Expose ApiService
+  (window as any).__API_SERVICE__ = apiService;
 }
 
 /**
@@ -56,37 +56,7 @@ const config: AppConfig = {
 let app: App | null = null;
 
 /**
- * EMERGENCY FIX: Direct redirect to dashboard after OAuth2
- */
-function forceRedirectToDashboard(): void {
-  console.log('🚨 EMERGENCY: Force redirecting to dashboard');
-  
-  // Method 1: Try router if available
-  try {
-    if (app) {
-      const router = app.getRouter();
-      if (router) {
-        router.push('/dashboard').then(() => {
-          console.log('✅ Router redirect successful');
-        }).catch((error) => {
-          console.error('❌ Router redirect failed:', error);
-          // Fallback to window.location
-          window.location.href = '/dashboard';
-        });
-        return;
-      }
-    }
-  } catch (error) {
-    console.error('❌ Router method failed:', error);
-  }
-  
-  // Method 2: Direct window.location
-  console.log('🔄 Using window.location redirect');
-  window.location.href = '/dashboard';
-}
-
-/**
- * Handle OAuth2 callbacks - EMERGENCY FIX
+ * Handle OAuth2 callbacks - FIXED VERSION
  */
 async function handleOAuth2Callback(): Promise<void> {
   const currentUrl = window.location.href;
@@ -103,23 +73,22 @@ async function handleOAuth2Callback(): Promise<void> {
       if (result.success) {
         console.log('✅ OAuth2 callback successful');
         
-        // EMERGENCY FIX: Immediate redirect without waiting
-        console.log('🚨 Forcing immediate dashboard redirect');
+        // Clear callback parameters from URL
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('code');
+        cleanUrl.searchParams.delete('state');
+        cleanUrl.searchParams.delete('scope');
         
-        // Clear the callback URL immediately
+        // Update URL without parameters
         window.history.replaceState({}, document.title, '/dashboard');
         
-        // Wait a moment for history to update, then force redirect
-        setTimeout(() => {
-          forceRedirectToDashboard();
-        }, 100);
-        
-        return; // Exit early
+        // Let the normal app initialization continue
+        // The router will handle navigation to dashboard
+        return;
       } else {
         console.error('❌ OAuth2 callback failed:', result.error);
         showOAuth2ErrorState(result.error || 'OAuth2 authentication failed');
         
-        // Redirect to home after error
         setTimeout(() => {
           window.location.href = '/';
         }, 3000);
@@ -223,34 +192,19 @@ async function initializeApp(): Promise<void> {
 }
 
 /**
- * Setup auth event listeners with emergency redirect
+ * Setup auth event listeners - FIXED VERSION
  */
 function setupAuthEventListeners(): void {
-  // EMERGENCY: Force dashboard redirect on any successful login
   authService.addEventListener('login:success', (data) => {
     console.log('👤 User logged in successfully:', data.user.email);
-    console.log('🚨 EMERGENCY: Forcing dashboard redirect');
-    setTimeout(() => {
-      forceRedirectToDashboard();
-    }, 500);
   });
 
   authService.addEventListener('oauth2:success', (data) => {
     console.log('🔗 OAuth2 login successful:', data.user.email);
-    console.log('🚨 EMERGENCY: Forcing dashboard redirect');
-    setTimeout(() => {
-      forceRedirectToDashboard();
-    }, 500);
   });
 
   authService.addEventListener('verification:success', (data) => {
     console.log('✅ Verification successful');
-    if (data.user) {
-      console.log('🚨 EMERGENCY: Forcing dashboard redirect');
-      setTimeout(() => {
-        forceRedirectToDashboard();
-      }, 500);
-    }
   });
 
   authService.addEventListener('registration:success', (data) => {
@@ -374,7 +328,7 @@ function showInitialLoading(): void {
 }
 
 /**
- * Main application bootstrap function
+ * Main application bootstrap function - FIXED VERSION
  */
 async function bootstrap(): Promise<void> {
   try {
@@ -386,11 +340,16 @@ async function bootstrap(): Promise<void> {
       throw new Error('Required DOM elements not found');
     }
 
-    // CRITICAL: Handle OAuth2 callback FIRST before anything else
-    if (authService.isOAuth2Callback()) {
-      console.log('🚨 PRIORITY: OAuth2 callback detected, handling immediately');
+    // Handle OAuth2 callback FIRST if present
+    const isOAuth2 = authService.isOAuth2Callback();
+    if (isOAuth2) {
+      console.log('🚨 OAuth2 callback detected, handling before app init');
       await handleOAuth2Callback();
-      return; // Exit early - OAuth2 handling takes over
+      
+      // If OAuth2 handling didn't redirect, continue with normal app init
+      if (window.location.pathname !== '/dashboard') {
+        console.log('🔄 OAuth2 handled, continuing with app initialization');
+      }
     }
 
     // Show initial loading state
@@ -434,16 +393,12 @@ if (config.environment === 'development') {
     getInstance: () => app,
     getConfig: () => config,
     getAuthService: () => authService,
-    getApiService: () => apiService, // ADDED: Expose ApiService
+    getApiService: () => apiService,
     restart: async () => {
       if (app) {
         await app.destroy();
       }
       await initializeApp();
-    },
-    // EMERGENCY: Manual redirect function
-    forceDashboard: () => {
-      forceRedirectToDashboard();
     }
   };
 }

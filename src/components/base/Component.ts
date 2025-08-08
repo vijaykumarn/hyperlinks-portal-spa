@@ -122,12 +122,23 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
    */
   protected setState(newState: Partial<S>): void {
     this.state = { ...this.state, ...newState };
-    
-    // Only update if mounted
-    if (this.isMountedFlag) {
-      this.update(this.props);
-    }
   }
+
+  /**
+ * Update component state without triggering re-render
+ */
+protected setStateQuiet(newState: Partial<S>): void {
+  this.state = { ...this.state, ...newState };
+}
+
+/**
+ * Force update component with current props and state
+ */
+protected forceUpdate(): void {
+  if (this.isMountedFlag) {
+    this.update(this.props);
+  }
+}
 
   /**
    * Unmount component from DOM

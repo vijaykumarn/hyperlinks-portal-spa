@@ -166,39 +166,38 @@ export class OAuth2Service {
   /**
    * Check if current URL is OAuth2 callback - FIXED DETECTION
    */
-  isOAuth2Callback(url: string = window.location.href): boolean {
-    try {
-      console.log('🔍 OAuth2Service: Checking if URL is OAuth2 callback:', url);
-      
-      const urlObj = new URL(url);
-      const hasCode = urlObj.searchParams.has('code');
-      const hasState = urlObj.searchParams.has('state');
-      
-      // Check for both query parameters AND common callback paths
-      const isCallbackPath = urlObj.pathname === '/auth/callback' || 
-                            urlObj.pathname.endsWith('/auth/callback') ||
-                            urlObj.pathname === '/' || // Root path with OAuth2 params
-                            urlObj.pathname === '/dashboard'; // Dashboard with OAuth2 params
-      
-      const isOAuth2 = (hasCode && hasState) || 
-                       (hasCode && isCallbackPath) ||
-                       (hasState && isCallbackPath);
-      
-      console.log('🔍 OAuth2 callback detection:', {
-        hasCode,
-        hasState,
-        isCallbackPath,
-        isOAuth2,
-        pathname: urlObj.pathname,
-        searchParams: urlObj.search
-      });
-      
-      return isOAuth2;
-    } catch (error) {
-      console.error('❌ OAuth2Service: Error checking callback URL:', error);
-      return false;
-    }
+  // REPLACE THIS METHOD:
+isOAuth2Callback(url: string = window.location.href): boolean {
+  try {
+    console.log('🔍 OAuth2Service: Checking if URL is OAuth2 callback:', url);
+    
+    const urlObj = new URL(url);
+    const hasCode = urlObj.searchParams.has('code');
+    const hasState = urlObj.searchParams.has('state');
+    
+    // More specific callback detection
+    const isCallbackPath = urlObj.pathname === '/auth/callback';
+    const hasOAuth2Params = hasCode && hasState;
+    
+    // Only consider it a callback if:
+    // 1. It's the specific callback path, OR
+    // 2. It has both required OAuth2 parameters
+    const isOAuth2 = isCallbackPath || hasOAuth2Params;
+    
+    console.log('🔍 OAuth2 callback detection:', {
+      hasCode,
+      hasState,
+      isCallbackPath,
+      isOAuth2,
+      pathname: urlObj.pathname
+    });
+    
+    return isOAuth2;
+  } catch (error) {
+    console.error('❌ OAuth2Service: Error checking callback URL:', error);
+    return false;
   }
+}
 
   /**
    * Get current OAuth2 state

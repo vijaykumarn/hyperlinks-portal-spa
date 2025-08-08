@@ -47,6 +47,9 @@ export class LoginForm extends FormComponent<LoginFormProps> {
         const target = e.target as HTMLInputElement;
         this.formValues.email = target.value;
         console.log('📧 NATIVE email input:', this.formValues.email);
+        
+        // Validate in real-time without re-render
+        this.validateEmailRealTime(this.formValues.email);
       };
       console.log('✅ Native email input handler attached');
     }
@@ -56,6 +59,9 @@ export class LoginForm extends FormComponent<LoginFormProps> {
         const target = e.target as HTMLInputElement;
         this.formValues.password = target.value;
         console.log('🔒 NATIVE password input:', this.formValues.password);
+        
+        // Validate in real-time without re-render
+        this.validatePasswordRealTime(this.formValues.password);
       };
       console.log('✅ Native password input handler attached');
     }
@@ -188,29 +194,32 @@ export class LoginForm extends FormComponent<LoginFormProps> {
       // Validate
       if (!emailValue || !passwordValue) {
         console.error('❌ Missing credentials');
-        this.setState({
+        this.setStateQuiet({
           errors: {
             general: 'Please enter both email and password'
           }
         });
+        this.updateGeneralError('Please enter both email and password');
         return;
       }
 
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
         console.error('❌ Invalid email format');
-        this.setState({
+        this.setStateQuiet({
           errors: {
             email: 'Please enter a valid email address'
           }
         });
+        this.updateFieldError('email', 'Please enter a valid email address');
         return;
       }
 
       // Clear errors and set loading
-      this.setState({ 
+      this.setStateQuiet({ 
         errors: {}, 
         isSubmitting: true 
       });
+      this.clearAllErrors();
 
       // Call login handler
       if (this.props.onLogin) {
@@ -226,20 +235,125 @@ export class LoginForm extends FormComponent<LoginFormProps> {
 
     } catch (error) {
       console.error('❌ Login submission error:', error);
-      this.setState({
+      this.setStateQuiet({
         errors: {
           general: error instanceof Error ? error.message : 'Login failed. Please try again.'
         },
         isSubmitting: false
       });
+      this.updateGeneralError(error instanceof Error ? error.message : 'Login failed. Please try again.');
     } finally {
-      this.setState({ isSubmitting: false });
+      this.setStateQuiet({ isSubmitting: false });
     }
   }
 
   // EMERGENCY: Override base class form submission
   protected async handleSubmit(event: Event): Promise<void> {
     return this.handleNativeSubmit(event);
+  }
+
+  /**
+   * Real-time validation without re-render
+   */
+  private validateEmailRealTime(email: string): void {
+    if (!email) return;
+    
+    const errors = { ...this.state.errors };
+    
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = 'Please enter a valid email address';
+    } else {
+      delete errors.email;
+    }
+    
+    // Use quiet state update to avoid re-render during typing
+    this.setStateQuiet({ errors });
+    
+    // Update only the error display if needed
+    this.updateFieldError('email', errors.email);
+  }
+
+  private validatePasswordRealTime(password: string): void {
+    if (!password) return;
+    
+    const errors = { ...this.state.errors };
+    
+    if (password.length < 1) {
+      errors.password = 'Password is required';
+    } else {
+      delete errors.password;
+    }
+    
+    // Use quiet state update to avoid re-render during typing
+    this.setStateQuiet({ errors });
+    
+    // Update only the error display if needed
+    this.updateFieldError('password', errors.password);
+  }
+
+  /**
+   * Update individual field error without full re-render
+   */
+  private updateFieldError(fieldName: string, error?: string): void {
+    const input = this.querySelector(`#login-${fieldName}`) as HTMLInputElement;
+    if (!input) return;
+    
+    const container = input.closest('[data-component="input"]');
+    if (!container) return;
+    
+    // Find or create error element
+    let errorElement = container.querySelector('.text-red-600');
+    
+    if (error) {
+      if (!errorElement) {
+        errorElement = document.createElement('p');
+        errorElement.className = 'text-sm text-red-600';
+        container.appendChild(errorElement);
+      }
+      errorElement.textContent = error;
+      
+      // Update input styling
+      input.className = input.className.replace(/border-gray-300|border-red-300/g, 'border-red-300');
+    } else {
+      if (errorElement) {
+        errorElement.remove();
+      }
+      
+      // Reset input styling
+      input.className = input.className.replace(/border-red-300/g, 'border-gray-300');
+    }
+  }
+
+  /**
+   * Update general error message
+   */
+  private updateGeneralError(error?: string): void {
+    const form = this.querySelector('form');
+    if (!form) return;
+
+    let errorContainer = form.querySelector('.general-error');
+    
+    if (error) {
+      if (!errorContainer) {
+        errorContainer = document.createElement('div');
+        errorContainer.className = 'bg-red-50 border border-red-200 rounded-md p-4 mb-6 general-error';
+        form.insertBefore(errorContainer, form.firstChild);
+      }
+      errorContainer.innerHTML = `<p class="text-red-800 text-sm">${error}</p>`;
+    } else {
+      if (errorContainer) {
+        errorContainer.remove();
+      }
+    }
+  }
+
+  /**
+   * Clear all error displays
+   */
+  private clearAllErrors(): void {
+    this.updateFieldError('email');
+    this.updateFieldError('password');
+    this.updateGeneralError();
   }
 
   public render(): string {
@@ -254,7 +368,7 @@ export class LoginForm extends FormComponent<LoginFormProps> {
           </div>
 
           ${errors.general ? `
-            <div class="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+            <div class="bg-red-50 border border-red-200 rounded-md p-4 mb-6 general-error">
               <p class="text-red-800 text-sm">${errors.general}</p>
             </div>
           ` : ''}

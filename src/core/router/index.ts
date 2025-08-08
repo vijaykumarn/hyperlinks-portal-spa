@@ -116,6 +116,16 @@ export function createRouter(): Router {
       }
     },
     {
+  path: '/auth/callback',
+  name: 'oauth2Callback',
+  handler: async (context) => {
+    await handleOAuth2CallbackRoute(context);
+  },
+  meta: {
+    title: 'Completing Authentication'
+  }
+},
+    {
       path: '*',
       name: 'catchAll',
       handler: async (_context) => {
@@ -212,11 +222,36 @@ async function handleUrlRedirect(context: any): Promise<void> {
   }, 2000);
 }
 
+
+
+
 async function render404Page(context: any): Promise<void> {
   if (globalPageManager) {
     await globalPageManager.renderPage('notFound', context);
   } else {
     console.error('❌ Page manager not available for 404 page');
+  }
+}
+
+// ADD THIS FUNCTION AFTER render404Page:
+async function handleOAuth2CallbackRoute(context: any): Promise<void> {
+  if (globalPageManager) {
+    const domManager = globalPageManager.domManager;
+    
+    // Show processing state
+    domManager.setContent(`
+      <div class="flex items-center justify-center min-h-screen bg-gray-50">
+        <div class="text-center">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <h1 class="text-2xl font-bold mb-2">Completing Authentication</h1>
+          <p class="text-gray-600">Please wait while we process your login...</p>
+        </div>
+      </div>
+    `);
+
+    // Let the main OAuth2 handler process this
+    // The AuthService will handle the actual callback processing
+    console.log('🔄 OAuth2 callback route handler - delegating to main callback processor');
   }
 }
 

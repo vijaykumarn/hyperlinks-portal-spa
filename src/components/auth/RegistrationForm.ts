@@ -62,6 +62,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
       inputs.username.oninput = (e) => {
         this.formValues.username = (e.target as HTMLInputElement).value;
         console.log('👤 Username:', this.formValues.username);
+        this.validateUsernameRealTime(this.formValues.username);
       };
     }
 
@@ -69,6 +70,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
       inputs.email.oninput = (e) => {
         this.formValues.email = (e.target as HTMLInputElement).value;
         console.log('📧 Email:', this.formValues.email);
+        this.validateEmailRealTime(this.formValues.email);
       };
     }
 
@@ -76,6 +78,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
       inputs.password.oninput = (e) => {
         this.formValues.password = (e.target as HTMLInputElement).value;
         console.log('🔒 Password:', this.formValues.password ? 'HAS_VALUE' : 'EMPTY');
+        this.validatePasswordRealTime(this.formValues.password);
       };
     }
 
@@ -135,7 +138,6 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
         error: this.state.errors.username,
         onChange: (value: string) => {
           this.formValues.username = value;
-          this.validateUsernameRealTime(value);
         }
       }
     });
@@ -152,7 +154,6 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
         error: this.state.errors.email,
         onChange: (value: string) => {
           this.formValues.email = value;
-          this.validateEmailRealTime(value);
         }
       }
     });
@@ -169,7 +170,6 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
         error: this.state.errors.password,
         onChange: (value: string) => {
           this.formValues.password = value;
-          this.validatePasswordRealTime(value);
         }
       }
     });
@@ -322,7 +322,8 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
       const errors = this.validateForm(formData);
       if (Object.keys(errors).length > 0) {
         console.warn('⚠️ Registration validation failed:', errors);
-        this.setState({ errors, isSubmitting: false });
+        this.setStateQuiet({ errors, isSubmitting: false });
+        this.displayValidationErrors(errors);
         return;
       }
 
@@ -336,7 +337,8 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
         marketing: formData.marketing
       };
 
-      this.setState({ isSubmitting: true, errors: {} });
+      this.setStateQuiet({ isSubmitting: true, errors: {} });
+      this.clearAllErrors();
 
       if (this.props.onRegister) {
         console.log('✅ Calling onRegister handler');
@@ -347,14 +349,15 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
 
     } catch (error) {
       console.error('❌ Registration submission error:', error);
-      this.setState({
+      this.setStateQuiet({
         errors: { 
           general: error instanceof Error ? error.message : 'Registration failed. Please try again.' 
         },
         isSubmitting: false
       });
+      this.updateGeneralError(error instanceof Error ? error.message : 'Registration failed. Please try again.');
     } finally {
-      this.setState({ isSubmitting: false });
+      this.setStateQuiet({ isSubmitting: false });
     }
   }
 
@@ -391,7 +394,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
   }
 
   /**
-   * Real-time validation methods
+   * Real-time validation methods without re-render
    */
   private validateUsernameRealTime(username: string): void {
     if (!username) return;
@@ -408,7 +411,8 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
       delete errors.username;
     }
     
-    this.setState({ errors });
+    this.setStateQuiet({ errors });
+    this.updateFieldError('username', errors.username);
   }
 
   private validateEmailRealTime(email: string): void {
@@ -424,7 +428,8 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
       delete errors.email;
     }
     
-    this.setState({ errors });
+    this.setStateQuiet({ errors });
+    this.updateFieldError('email', errors.email);
   }
 
   private validatePasswordRealTime(password: string): void {
@@ -455,7 +460,109 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
       delete errors.password;
     }
     
-    this.setState({ errors });
+    this.setStateQuiet({ errors });
+    this.updateFieldError('password', errors.password);
+  }
+
+  /**
+   * Update individual field error without full re-render
+   */
+  private updateFieldError(fieldName: string, error?: string): void {
+    const input = this.querySelector(`#reg-${fieldName}`) as HTMLInputElement;
+    if (!input) return;
+    
+    const container = input.closest('[data-component="input"]');
+    if (!container) return;
+    
+    let errorElement = container.querySelector('.text-red-600');
+    
+    if (error) {
+      if (!errorElement) {
+        errorElement = document.createElement('p');
+        errorElement.className = 'text-sm text-red-600';
+        container.appendChild(errorElement);
+      }
+      errorElement.textContent = error;
+      input.className = input.className.replace(/border-gray-300|border-red-300/g, 'border-red-300');
+    } else {
+      if (errorElement) {
+        errorElement.remove();
+      }
+      input.className = input.className.replace(/border-red-300/g, 'border-gray-300');
+    }
+  }
+
+  /**
+   * Update general error message
+   */
+  private updateGeneralError(error?: string): void {
+    const form = this.querySelector('form');
+    if (!form) return;
+
+    let errorContainer = form.querySelector('.general-error');
+    
+    if (error) {
+      if (!errorContainer) {
+        errorContainer = document.createElement('div');
+        errorContainer.className = 'bg-red-50 border border-red-200 rounded-md p-4 mb-6 general-error';
+        form.insertBefore(errorContainer, form.firstChild);
+      }
+      errorContainer.innerHTML = `<p class="text-red-800 text-sm">${error}</p>`;
+    } else {
+      if (errorContainer) {
+        errorContainer.remove();
+      }
+    }
+  }
+
+  /**
+   * Display validation errors
+   */
+  private displayValidationErrors(errors: Record<string, string>): void {
+    Object.entries(errors).forEach(([field, error]) => {
+      if (field === 'general') {
+        this.updateGeneralError(error);
+      } else if (field === 'terms') {
+        this.updateTermsError(error);
+      } else {
+        this.updateFieldError(field, error);
+      }
+    });
+  }
+
+  /**
+   * Update terms checkbox error
+   */
+  private updateTermsError(error?: string): void {
+    const termsContainer = this.querySelector('#terms')?.closest('.flex');
+    if (!termsContainer) return;
+
+    let errorElement = termsContainer.parentElement?.querySelector('.terms-error');
+    
+    if (error) {
+      if (!errorElement) {
+        errorElement = document.createElement('p');
+        errorElement.className = 'text-red-600 text-sm terms-error';
+        termsContainer.parentElement?.appendChild(errorElement);
+      }
+      errorElement.textContent = error;
+    } else {
+      if (errorElement) {
+        errorElement.remove();
+      }
+    }
+  }
+
+  /**
+   * Clear all error displays
+   */
+  private clearAllErrors(): void {
+    this.updateFieldError('username');
+    this.updateFieldError('email');
+    this.updateFieldError('password');
+    this.updateFieldError('organisation');
+    this.updateGeneralError();
+    this.updateTermsError();
   }
 
   public render(): string {
@@ -471,7 +578,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
           </div>
 
           ${errors.general ? `
-            <div class="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+            <div class="bg-red-50 border border-red-200 rounded-md p-4 mb-6 general-error">
               <p class="text-red-800 text-sm">${errors.general}</p>
             </div>
           ` : ''}
@@ -513,7 +620,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
                 </label>
               </div>
               ${errors.terms ? `
-                <p class="text-red-600 text-sm">${errors.terms}</p>
+                <p class="text-red-600 text-sm terms-error">${errors.terms}</p>
               ` : ''}
 
               <div class="flex items-start">
