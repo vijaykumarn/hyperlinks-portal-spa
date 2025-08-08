@@ -1,4 +1,4 @@
-// src/components/ui/Input.ts - FIXED VERSION WITH TYPE SAFETY
+// src/components/ui/Input.ts - FINAL WORKING VERSION
 
 import { type ComponentProps, Component } from "../base/Component";
 
@@ -19,102 +19,128 @@ export interface InputProps extends ComponentProps {
 
 export class Input extends Component<InputProps> {
   private currentValue: string = '';
+  private inputElement: HTMLInputElement | null = null;
 
   protected setupEventListeners(): void {
-    const input = this.querySelector<HTMLInputElement>('input');
-    if (!input) {
-      console.error('❌ Input element not found in Input component');
+    // CRITICAL: Find the input element first
+    this.inputElement = this.querySelector<HTMLInputElement>('input');
+    
+    if (!this.inputElement) {
+      console.error('❌ Input element not found for:', this.props.name);
+      // Retry after a delay
+      setTimeout(() => {
+        this.inputElement = this.querySelector<HTMLInputElement>('input');
+        if (this.inputElement) {
+          console.log('✅ Input element found on retry for:', this.props.name);
+          this.bindEvents();
+        }
+      }, 100);
       return;
     }
 
-    console.log('🔧 Setting up Input event listeners for:', this.props.name);
+    console.log('🔧 Input element found, setting up events for:', this.props.name);
+    this.bindEvents();
+  }
+
+  private bindEvents(): void {
+    if (!this.inputElement) return;
 
     // Set initial value
     this.currentValue = this.props.value || '';
     if (this.currentValue) {
-      input.value = this.currentValue;
+      this.inputElement.value = this.currentValue;
     }
 
-    // Handle input changes - FIXED to capture all input types
-    this.addEventListener(input, 'input', (e) => {
-      const target = e.target as HTMLInputElement;
-      this.currentValue = target.value;
-      console.log(`📝 Input ${this.props.name} changed to: ${this.currentValue ? '***' : 'EMPTY'} (length: ${this.currentValue.length})`);
-      
-      if (this.props.onChange) {
-        this.props.onChange(this.currentValue, e);
-      }
-    });
-
-    // Handle keyup events for immediate feedback
-    this.addEventListener(input, 'keyup', (e) => {
-      const target = e.target as HTMLInputElement;
-      this.currentValue = target.value;
-    });
-
-    // Also handle 'change' event for better compatibility
-    this.addEventListener(input, 'change', (e) => {
-      const target = e.target as HTMLInputElement;
-      this.currentValue = target.value;
-      console.log(`🔄 Input ${this.props.name} change event: ${this.currentValue ? '***' : 'EMPTY'} (length: ${this.currentValue.length})`);
-    });
-
-    // Handle blur events
-    if (this.props.onBlur) {
-      this.addEventListener(input, 'blur', (e) => {
-        const target = e.target as HTMLInputElement;
-        this.currentValue = target.value;
-        console.log(`👁️ Input ${this.props.name} blurred with value:`, this.currentValue ? '***' : 'EMPTY');
-        this.props.onBlur!(e);
+    // CRITICAL: Use multiple event types for maximum compatibility
+    const events = ['input', 'keyup', 'change', 'paste'];
+    
+    events.forEach(eventType => {
+      this.inputElement!.addEventListener(eventType, (e) => {
+        // Small delay for paste events
+        const delay = eventType === 'paste' ? 10 : 0;
+        
+        setTimeout(() => {
+          const target = e.target as HTMLInputElement;
+          const newValue = target.value;
+          
+          if (newValue !== this.currentValue) {
+            this.currentValue = newValue;
+            console.log(`📝 ${this.props.name} ${eventType}:`, newValue ? 'HAS_VALUE' : 'EMPTY', `(${newValue.length} chars)`);
+            
+            if (this.props.onChange) {
+              this.props.onChange(this.currentValue, e);
+            }
+          }
+        }, delay);
       });
+    });
+
+    // Handle blur and focus events
+    if (this.props.onBlur) {
+      this.inputElement.addEventListener('blur', this.props.onBlur);
     }
 
-    // Handle focus events
     if (this.props.onFocus) {
-      this.addEventListener(input, 'focus', this.props.onFocus);
+      this.inputElement.addEventListener('focus', this.props.onFocus);
     }
 
-    // Sync value immediately
-    this.syncValue();
+    console.log('✅ All events bound for:', this.props.name);
   }
 
   protected onMounted(): void {
-    // Ensure value is set after mounting
-    setTimeout(() => this.syncValue(), 0);
+    console.log('🎯 Input mounted:', this.props.name);
+    
+    // Ensure events are set up after mount
+    setTimeout(() => {
+      if (!this.inputElement) {
+        this.setupEventListeners();
+      }
+      
+      // Set initial value if provided
+      if (this.props.value && this.inputElement) {
+        this.inputElement.value = this.props.value;
+        this.currentValue = this.props.value;
+      }
+    }, 50);
   }
 
   protected onUpdated(): void {
-    // Re-sync value after update
-    this.syncValue();
-  }
-
-  private syncValue(): void {
-    const input = this.querySelector<HTMLInputElement>('input');
-    if (input) {
-      // Set value from props or current value
-      const valueToSet = this.props.value || this.currentValue || '';
-      input.value = valueToSet;
-      this.currentValue = valueToSet;
-      console.log(`🔄 Input ${this.props.name} synced to: ${valueToSet ? '***' : 'EMPTY'} (length: ${valueToSet.length})`);
-    }
+    console.log('🔄 Input updated:', this.props.name);
+    
+    // Re-setup events after update
+    setTimeout(() => {
+      this.inputElement = this.querySelector<HTMLInputElement>('input');
+      if (this.inputElement) {
+        this.bindEvents();
+      }
+    }, 50);
   }
 
   public getValue(): string {
-    // Always get the latest value from the DOM element
-    const input = this.querySelector<HTMLInputElement>('input');
-    if (input) {
-      this.currentValue = input.value;
-      console.log(`📤 Input ${this.props.name} getValue(): ${this.currentValue ? '***' : 'EMPTY'} (length: ${this.currentValue.length})`);
+    // Always get the latest value from the DOM
+    if (this.inputElement) {
+      this.currentValue = this.inputElement.value;
     }
+    console.log(`📤 getValue for ${this.props.name}:`, this.currentValue ? 'HAS_VALUE' : 'EMPTY', `(${this.currentValue.length} chars)`);
     return this.currentValue;
   }
 
   public setValue(value: string): void {
     this.currentValue = value;
-    const input = this.querySelector<HTMLInputElement>('input');
-    if (input) {
-      input.value = value;
-      console.log(`📥 Input ${this.props.name} setValue(): ${value ? '***' : 'EMPTY'} (length: ${value.length})`);
+    if (this.inputElement) {
+      this.inputElement.value = value;
+    }
+    console.log(`📥 setValue for ${this.props.name}:`, value ? 'HAS_VALUE' : 'EMPTY', `(${value.length} chars)`);
+    
+    // Trigger onChange if provided
+    if (this.props.onChange) {
+      this.props.onChange(value, new Event('change'));
+    }
+  }
+
+  public focus(): void {
+    if (this.inputElement) {
+      this.inputElement.focus();
     }
   }
 
@@ -131,25 +157,23 @@ export class Input extends Component<InputProps> {
       error = ''
     } = this.props;
 
-    // Use current value if available, otherwise use prop value
-    const displayValue = this.currentValue || value;
-
     const inputClasses = `
-      block w-full px-3 py-2 border rounded-md shadow-sm 
+      block w-full px-3 py-2 border rounded-md shadow-sm text-sm
       focus:outline-none focus:ring-2 focus:ring-offset-2 
-      disabled:bg-gray-50 disabled:text-gray-500
+      disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed
       ${error ? 
         'border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500' : 
         'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
       }
     `.trim();
 
+    // CRITICAL: Don't pre-fill value in HTML to avoid conflicts
     return `
-      <div data-component="input">
+      <div data-component="input" class="space-y-1">
         ${label ? `
-          <label for="${id}" class="block text-sm font-medium text-gray-700 mb-1">
+          <label for="${id}" class="block text-sm font-medium text-gray-700">
             ${label}
-            ${required ? '<span class="text-red-500">*</span>' : ''}
+            ${required ? '<span class="text-red-500 ml-1">*</span>' : ''}
           </label>
         ` : ''}
         
@@ -157,18 +181,26 @@ export class Input extends Component<InputProps> {
           type="${type}"
           id="${id}"
           name="${name}"
-          value="${displayValue}"
           placeholder="${placeholder}"
           class="${inputClasses}"
           ${disabled ? 'disabled' : ''}
           ${required ? 'required' : ''}
-          autocomplete="${type === 'email' ? 'email' : type === 'password' ? 'current-password' : 'off'}"
+          autocomplete="${this.getAutocompleteValue(type)}"
         />
         
         ${error ? `
-          <p class="mt-1 text-sm text-red-600">${error}</p>
+          <p class="text-sm text-red-600">${error}</p>
         ` : ''}
       </div>
     `;
+  }
+
+  private getAutocompleteValue(type: string): string {
+    switch (type) {
+      case 'email': return 'email';
+      case 'password': return 'current-password';
+      case 'url': return 'url';
+      default: return 'off';
+    }
   }
 }

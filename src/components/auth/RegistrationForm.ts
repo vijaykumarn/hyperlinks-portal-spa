@@ -1,4 +1,4 @@
-// src/components/auth/RegistrationForm.ts
+// src/components/auth/RegistrationForm.ts - EMERGENCY FIX
 
 import { FormComponent, type FormComponentProps } from '../base/FormComponent';
 import { Input, Button } from '../ui';
@@ -21,24 +21,105 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
   private googleButton: Button | null = null;
   private switchToLoginButton: Button | null = null;
 
+  // EMERGENCY: Direct form data tracking
+  private formValues = {
+    username: '',
+    email: '',
+    password: '',
+    organisation: '',
+    terms: false,
+    marketing: false
+  };
+
   protected setupEventListeners(): void {
+    // EMERGENCY: Setup native form events
+    setTimeout(() => {
+      this.setupNativeFormEvents();
+    }, 100);
+  }
+
+  private setupNativeFormEvents(): void {
     const form = this.querySelector('form');
     if (form) {
-      this.addEventListener(form, 'submit', (e) => this.handleSubmit(e));
+      form.onsubmit = (e) => {
+        console.log('📝 NATIVE registration form submit');
+        e.preventDefault();
+        this.handleNativeSubmit(e);
+      };
+    }
+
+    // EMERGENCY: Direct input event binding
+    const inputs = {
+      username: this.querySelector('#reg-username') as HTMLInputElement,
+      email: this.querySelector('#reg-email') as HTMLInputElement,
+      password: this.querySelector('#reg-password') as HTMLInputElement,
+      organisation: this.querySelector('#reg-organisation') as HTMLInputElement,
+      terms: this.querySelector('#terms') as HTMLInputElement,
+      marketing: this.querySelector('#marketing') as HTMLInputElement
+    };
+
+    if (inputs.username) {
+      inputs.username.oninput = (e) => {
+        this.formValues.username = (e.target as HTMLInputElement).value;
+        console.log('👤 Username:', this.formValues.username);
+      };
+    }
+
+    if (inputs.email) {
+      inputs.email.oninput = (e) => {
+        this.formValues.email = (e.target as HTMLInputElement).value;
+        console.log('📧 Email:', this.formValues.email);
+      };
+    }
+
+    if (inputs.password) {
+      inputs.password.oninput = (e) => {
+        this.formValues.password = (e.target as HTMLInputElement).value;
+        console.log('🔒 Password:', this.formValues.password ? 'HAS_VALUE' : 'EMPTY');
+      };
+    }
+
+    if (inputs.organisation) {
+      inputs.organisation.oninput = (e) => {
+        this.formValues.organisation = (e.target as HTMLInputElement).value;
+        console.log('🏢 Organisation:', this.formValues.organisation);
+      };
+    }
+
+    if (inputs.terms) {
+      inputs.terms.onchange = (e) => {
+        this.formValues.terms = (e.target as HTMLInputElement).checked;
+        console.log('📋 Terms:', this.formValues.terms);
+      };
+    }
+
+    if (inputs.marketing) {
+      inputs.marketing.onchange = (e) => {
+        this.formValues.marketing = (e.target as HTMLInputElement).checked;
+        console.log('📢 Marketing:', this.formValues.marketing);
+      };
     }
   }
 
   protected onMounted(): void {
-    console.log('📝 RegistrationForm mounted, creating child components...');
+    console.log('📝 RegistrationForm mounted');
     this.createChildComponents();
     this.mountChildComponents();
+    
+    setTimeout(() => {
+      this.setupNativeFormEvents();
+    }, 200);
   }
 
   protected onUpdated(): void {
-    console.log('🔄 RegistrationForm updated, re-creating child components...');
+    console.log('🔄 RegistrationForm updated');
     this.unmountChildComponents();
     this.createChildComponents();
     this.mountChildComponents();
+    
+    setTimeout(() => {
+      this.setupNativeFormEvents();
+    }, 200);
   }
 
   private createChildComponents(): void {
@@ -53,6 +134,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
         required: true,
         error: this.state.errors.username,
         onChange: (value: string) => {
+          this.formValues.username = value;
           this.validateUsernameRealTime(value);
         }
       }
@@ -69,6 +151,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
         required: true,
         error: this.state.errors.email,
         onChange: (value: string) => {
+          this.formValues.email = value;
           this.validateEmailRealTime(value);
         }
       }
@@ -85,6 +168,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
         required: true,
         error: this.state.errors.password,
         onChange: (value: string) => {
+          this.formValues.password = value;
           this.validatePasswordRealTime(value);
         }
       }
@@ -99,7 +183,10 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
         label: 'Organisation (Optional)',
         placeholder: 'Your company or organisation',
         required: false,
-        error: this.state.errors.organisation
+        error: this.state.errors.organisation,
+        onChange: (value: string) => {
+          this.formValues.organisation = value;
+        }
       }
     });
 
@@ -156,46 +243,48 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
   }
 
   private mountChildComponents(): void {
-    const usernameContainer = this.querySelector('#username-container');
-    const emailContainer = this.querySelector('#email-container');
-    const passwordContainer = this.querySelector('#password-container');
-    const organisationContainer = this.querySelector('#organisation-container');
-    const registerButtonContainer = this.querySelector('#register-button-container');
-    const googleButtonContainer = this.querySelector('#google-button-container');
-    const switchButtonContainer = this.querySelector('#switch-button-container');
+    const containers = {
+      username: this.querySelector('#username-container'),
+      email: this.querySelector('#email-container'),
+      password: this.querySelector('#password-container'),
+      organisation: this.querySelector('#organisation-container'),
+      register: this.querySelector('#register-button-container'),
+      google: this.querySelector('#google-button-container'),
+      switch: this.querySelector('#switch-button-container')
+    };
 
-    if (usernameContainer && this.usernameInput) {
-      this.usernameInput.mount(usernameContainer);
+    if (containers.username && this.usernameInput) {
+      this.usernameInput.mount(containers.username);
       this.addChildComponent(this.usernameInput);
     }
 
-    if (emailContainer && this.emailInput) {
-      this.emailInput.mount(emailContainer);
+    if (containers.email && this.emailInput) {
+      this.emailInput.mount(containers.email);
       this.addChildComponent(this.emailInput);
     }
 
-    if (passwordContainer && this.passwordInput) {
-      this.passwordInput.mount(passwordContainer);
+    if (containers.password && this.passwordInput) {
+      this.passwordInput.mount(containers.password);
       this.addChildComponent(this.passwordInput);
     }
 
-    if (organisationContainer && this.organisationInput) {
-      this.organisationInput.mount(organisationContainer);
+    if (containers.organisation && this.organisationInput) {
+      this.organisationInput.mount(containers.organisation);
       this.addChildComponent(this.organisationInput);
     }
 
-    if (registerButtonContainer && this.registerButton) {
-      this.registerButton.mount(registerButtonContainer);
+    if (containers.register && this.registerButton) {
+      this.registerButton.mount(containers.register);
       this.addChildComponent(this.registerButton);
     }
 
-    if (googleButtonContainer && this.googleButton) {
-      this.googleButton.mount(googleButtonContainer);
+    if (containers.google && this.googleButton) {
+      this.googleButton.mount(containers.google);
       this.addChildComponent(this.googleButton);
     }
 
-    if (switchButtonContainer && this.switchToLoginButton) {
-      this.switchToLoginButton.mount(switchButtonContainer);
+    if (containers.switch && this.switchToLoginButton) {
+      this.switchToLoginButton.mount(containers.switch);
       this.addChildComponent(this.switchToLoginButton);
     }
   }
@@ -212,87 +301,93 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
     this.switchToLoginButton = null;
   }
 
-  protected async handleSubmit(event: Event): Promise<void> {
-    console.log('📝 RegistrationForm submission started...');
-    event.preventDefault();
-
-    const formData = this.getFormData();
-    console.log('📊 Registration form data collected:', {
-      username: formData.username || 'MISSING',
-      email: formData.email || 'MISSING',
-      organisation: formData.organisation || 'none',
-      terms: formData.terms || false,
-      marketing: formData.marketing || false
-    });
-
-    // Validate form
-    const errors = this.validateForm(formData);
-    if (Object.keys(errors).length > 0) {
-      console.warn('⚠️ RegistrationForm validation failed:', errors);
-      this.setState({ errors, isSubmitting: false });
-      return;
-    }
-
-    // Prepare registration data
-    const registrationData: RegistrationRequest = {
-      username: formData.username as string,
-      email: formData.email as string,
-      password: formData.password as string,
-      organisation: (formData.organisation as string) || undefined,
-      terms: Boolean(formData.terms),
-      marketing: Boolean(formData.marketing)
-    };
-
-    if (this.props.onRegister) {
-      console.log('✅ RegistrationForm validation passed, calling onRegister...');
+  // EMERGENCY: Native form submission handler
+  private async handleNativeSubmit(event: Event): Promise<void> {
+    console.log('📝 NATIVE registration submission started');
+    
+    try {
+      // Collect values from multiple sources
+      const formData = this.collectFormData();
       
-      this.setState({ isSubmitting: true, errors: {} });
-      
-      try {
-        await this.props.onRegister(registrationData);
-      } catch (error) {
-        console.error('❌ RegistrationForm onRegister failed:', error);
-        this.setState({
-          errors: { general: 'Registration failed. Please try again.' },
-          isSubmitting: false
-        });
-      } finally {
-        this.setState({ isSubmitting: false });
+      console.log('📊 Registration data collected:', {
+        username: formData.username ? 'HAS_VALUE' : 'EMPTY',
+        email: formData.email ? 'HAS_VALUE' : 'EMPTY',
+        password: formData.password ? 'HAS_VALUE' : 'EMPTY',
+        organisation: formData.organisation || 'none',
+        terms: formData.terms,
+        marketing: formData.marketing
+      });
+
+      // Validate form
+      const errors = this.validateForm(formData);
+      if (Object.keys(errors).length > 0) {
+        console.warn('⚠️ Registration validation failed:', errors);
+        this.setState({ errors, isSubmitting: false });
+        return;
       }
+
+      // Prepare registration data
+      const registrationData: RegistrationRequest = {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        organisation: formData.organisation || undefined,
+        terms: formData.terms,
+        marketing: formData.marketing
+      };
+
+      this.setState({ isSubmitting: true, errors: {} });
+
+      if (this.props.onRegister) {
+        console.log('✅ Calling onRegister handler');
+        await this.props.onRegister(registrationData);
+      } else {
+        throw new Error('No registration handler available');
+      }
+
+    } catch (error) {
+      console.error('❌ Registration submission error:', error);
+      this.setState({
+        errors: { 
+          general: error instanceof Error ? error.message : 'Registration failed. Please try again.' 
+        },
+        isSubmitting: false
+      });
+    } finally {
+      this.setState({ isSubmitting: false });
     }
   }
 
-  /**
-   * Enhanced form data collection
-   */
-  protected getFormData(): Record<string, any> {
-    const data: Record<string, any> = {};
-    
-    // Get data from child components
-    if (this.usernameInput) {
-      data.username = this.usernameInput.getValue();
-    }
-    if (this.emailInput) {
-      data.email = this.emailInput.getValue();
-    }
-    if (this.passwordInput) {
-      data.password = this.passwordInput.getValue();
-    }
-    if (this.organisationInput) {
-      data.organisation = this.organisationInput.getValue();
-    }
+  private collectFormData(): any {
+    // Method 1: From tracked values
+    let data = { ...this.formValues };
 
-    // Get checkbox values from form elements
+    // Method 2: From DOM elements
     const form = this.querySelector('form');
     if (form) {
-      const termsCheckbox = form.querySelector('#terms') as HTMLInputElement;
-      const marketingCheckbox = form.querySelector('#marketing') as HTMLInputElement;
-      
-      data.terms = termsCheckbox?.checked || false;
-      data.marketing = marketingCheckbox?.checked || false;
+      const inputs = {
+        username: form.querySelector('#reg-username') as HTMLInputElement,
+        email: form.querySelector('#reg-email') as HTMLInputElement,
+        password: form.querySelector('#reg-password') as HTMLInputElement,
+        organisation: form.querySelector('#reg-organisation') as HTMLInputElement,
+        terms: form.querySelector('#terms') as HTMLInputElement,
+        marketing: form.querySelector('#marketing') as HTMLInputElement
+      };
+
+      if (inputs.username?.value) data.username = inputs.username.value;
+      if (inputs.email?.value) data.email = inputs.email.value;
+      if (inputs.password?.value) data.password = inputs.password.value;
+      if (inputs.organisation?.value) data.organisation = inputs.organisation.value;
+      if (inputs.terms) data.terms = inputs.terms.checked;
+      if (inputs.marketing) data.marketing = inputs.marketing.checked;
     }
 
     return data;
+  }
+
+  // Override base class method
+  protected async handleSubmit(event: Event): Promise<void> {
+    return this.handleNativeSubmit(event);
   }
 
   /**
@@ -394,7 +489,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
             </div>
           ` : ''}
 
-          <form class="space-y-4">
+          <form class="space-y-4" novalidate>
             <div id="username-container"></div>
             <div id="email-container"></div>
             <div id="password-container"></div>

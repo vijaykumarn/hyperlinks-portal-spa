@@ -1,4 +1,4 @@
-// src/services/auth/AuthApiClient.ts
+// src/services/auth/AuthApiClient.ts - FIXED UNUSED IMPORTS
 
 import { HttpClient } from '../core/HttpClient';
 import { ApiConfig } from '../core/ApiConfig';
@@ -8,12 +8,12 @@ import type {
   RegistrationResponse,
   LoginRequest,
   LoginResponse,
-  ForgotPasswordRequest,
+  // REMOVED: ForgotPasswordRequest - not used in this client
   ForgotPasswordResponse,
   ResetPasswordRequest,
-  ConfirmAccountRequest,
+  // REMOVED: ConfirmAccountRequest - not used in this client  
   ConfirmAccountResponse,
-  ResendVerificationRequest,
+  // REMOVED: ResendVerificationRequest - not used in this client
   SessionInfo,
   OAuth2AuthUrlResponse,
   UserData

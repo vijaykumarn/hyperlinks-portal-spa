@@ -1,4 +1,4 @@
-// src/components/forms/LoginForm.ts - FIXED VERSION WITH TYPE SAFETY
+// src/components/forms/LoginForm.ts - EMERGENCY FIX FOR FORM INPUTS
 
 import type { FormComponentProps } from "../base/FormComponent";
 import { FormComponent } from "../base/FormComponent";
@@ -13,29 +13,79 @@ export class LoginForm extends FormComponent<LoginFormProps> {
   private emailInput: Input | null = null;
   private passwordInput: Input | null = null;
   private submitButton: Button | null = null;
+  
+  // EMERGENCY: Direct form data tracking
+  private formValues = {
+    email: '',
+    password: ''
+  };
 
   protected setupEventListeners(): void {
+    // EMERGENCY: Setup native form submission
+    setTimeout(() => {
+      this.setupNativeFormEvents();
+    }, 100);
+  }
+
+  private setupNativeFormEvents(): void {
     const form = this.querySelector('form');
     if (form) {
-      this.addEventListener(form, 'submit', (e) => this.handleSubmit(e));
-      console.log('✅ LoginForm submit listener attached');
+      form.onsubmit = (e) => {
+        console.log('📝 NATIVE form submit triggered');
+        e.preventDefault();
+        this.handleNativeSubmit(e);
+      };
+      console.log('✅ Native form submit handler attached');
+    }
+
+    // EMERGENCY: Direct input event binding
+    const emailInput = this.querySelector('#login-email') as HTMLInputElement;
+    const passwordInput = this.querySelector('#login-password') as HTMLInputElement;
+
+    if (emailInput) {
+      emailInput.oninput = (e) => {
+        const target = e.target as HTMLInputElement;
+        this.formValues.email = target.value;
+        console.log('📧 NATIVE email input:', this.formValues.email);
+      };
+      console.log('✅ Native email input handler attached');
+    }
+
+    if (passwordInput) {
+      passwordInput.oninput = (e) => {
+        const target = e.target as HTMLInputElement;
+        this.formValues.password = target.value;
+        console.log('🔒 NATIVE password input:', this.formValues.password);
+      };
+      console.log('✅ Native password input handler attached');
     }
   }
 
   protected onMounted(): void {
-    console.log('🔐 LoginForm mounted, creating child components...');
+    console.log('🔐 LoginForm mounted');
     this.createChildComponents();
     this.mountChildComponents();
+    
+    // EMERGENCY: Additional setup
+    setTimeout(() => {
+      this.setupNativeFormEvents();
+    }, 200);
   }
 
   protected onUpdated(): void {
-    console.log('🔄 LoginForm updated, re-creating child components...');
+    console.log('🔄 LoginForm updated');
     this.unmountChildComponents();
     this.createChildComponents();
     this.mountChildComponents();
+    
+    setTimeout(() => {
+      this.setupNativeFormEvents();
+    }, 200);
   }
 
   private createChildComponents(): void {
+    console.log('🏗️ Creating child components...');
+
     this.emailInput = new Input({
       props: {
         type: 'email',
@@ -46,7 +96,8 @@ export class LoginForm extends FormComponent<LoginFormProps> {
         required: true,
         error: this.state.errors.email,
         onChange: (value: string) => {
-          console.log('📧 Email input changed:', value ? '***' : 'EMPTY');
+          console.log('📧 Component email changed:', value);
+          this.formValues.email = value;
         }
       }
     });
@@ -61,7 +112,8 @@ export class LoginForm extends FormComponent<LoginFormProps> {
         required: true,
         error: this.state.errors.password,
         onChange: (value: string) => {
-          console.log('🔒 Password input changed:', value ? '***' : 'EMPTY');
+          console.log('🔒 Component password changed:', value);
+          this.formValues.password = value;
         }
       }
     });
@@ -73,7 +125,6 @@ export class LoginForm extends FormComponent<LoginFormProps> {
         loading: this.props.isLoading || this.state.isSubmitting,
         disabled: this.props.isLoading || this.state.isSubmitting,
         children: this.state.isSubmitting ? 'Logging in...' : 'Login'
-        // Note: No onClick for submit button - form submission handles this
       }
     });
   }
@@ -83,7 +134,7 @@ export class LoginForm extends FormComponent<LoginFormProps> {
     const passwordContainer = this.querySelector('#password-container');
     const buttonContainer = this.querySelector('#button-container');
 
-    console.log('📍 LoginForm mounting children to containers:', {
+    console.log('📍 Mounting components:', {
       emailContainer: !!emailContainer,
       passwordContainer: !!passwordContainer,
       buttonContainer: !!buttonContainer
@@ -113,144 +164,116 @@ export class LoginForm extends FormComponent<LoginFormProps> {
     this.submitButton = null;
   }
 
-  protected async handleSubmit(event: Event): Promise<void> {
-    console.log('📝 LoginForm submission started...');
-    event.preventDefault(); // Prevent default form submission
+  // EMERGENCY: Native form submission handler
+  private async handleNativeSubmit(event: Event): Promise<void> {
+    console.log('📝 NATIVE form submission started');
     
-    // Get form data FIRST, before validation
-    const formData = this.getFormData();
-    console.log('📊 Form data collected:', {
-      email: formData.email || 'MISSING',
-      password: formData.password ? '***' : 'MISSING',
-      emailLength: formData.email?.length || 0,
-      passwordLength: formData.password?.length || 0,
-      allKeys: Object.keys(formData)
-    });
-
-    // Validate the collected data
-    const errors = this.validateForm(formData);
-    if (Object.keys(errors).length > 0) {
-      console.warn('⚠️ LoginForm validation failed:', errors);
-      this.setState({ errors, isSubmitting: false });
-      return;
-    }
-
-    // If we have onLogin handler and valid data, proceed
-    if (this.props.onLogin && formData.email && formData.password) {
-      console.log('✅ LoginForm validation passed, calling onLogin...');
+    try {
+      // Get values from multiple sources
+      const emailValue = this.formValues.email || 
+                         (this.querySelector('#login-email') as HTMLInputElement)?.value || 
+                         this.emailInput?.getValue() || '';
       
-      this.setState({ isSubmitting: true, errors: {} });
-      
-      try {
-        await this.props.onLogin({
-          email: formData.email as string,
-          password: formData.password as string
-        });
-      } catch (error) {
-        console.error('❌ LoginForm onLogin failed:', error);
-        this.setState({
-          errors: { general: 'Login failed. Please check your credentials.' },
-          isSubmitting: false
-        });
-      } finally {
-        this.setState({ isSubmitting: false });
-      }
-    } else {
-      console.warn('⚠️ LoginForm: Missing onLogin handler or form data:', {
-        hasOnLogin: !!this.props.onLogin,
-        formData: formData
+      const passwordValue = this.formValues.password || 
+                           (this.querySelector('#login-password') as HTMLInputElement)?.value || 
+                           this.passwordInput?.getValue() || '';
+
+      console.log('📊 Collected values:', {
+        email: emailValue ? 'HAS_VALUE' : 'EMPTY',
+        password: passwordValue ? 'HAS_VALUE' : 'EMPTY',
+        emailLength: emailValue.length,
+        passwordLength: passwordValue.length
       });
+
+      // Validate
+      if (!emailValue || !passwordValue) {
+        console.error('❌ Missing credentials');
+        this.setState({
+          errors: {
+            general: 'Please enter both email and password'
+          }
+        });
+        return;
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+        console.error('❌ Invalid email format');
+        this.setState({
+          errors: {
+            email: 'Please enter a valid email address'
+          }
+        });
+        return;
+      }
+
+      // Clear errors and set loading
+      this.setState({ 
+        errors: {}, 
+        isSubmitting: true 
+      });
+
+      // Call login handler
+      if (this.props.onLogin) {
+        console.log('✅ Calling onLogin handler');
+        await this.props.onLogin({
+          email: emailValue,
+          password: passwordValue
+        });
+      } else {
+        console.error('❌ No onLogin handler provided');
+        throw new Error('No login handler available');
+      }
+
+    } catch (error) {
+      console.error('❌ Login submission error:', error);
+      this.setState({
+        errors: {
+          general: error instanceof Error ? error.message : 'Login failed. Please try again.'
+        },
+        isSubmitting: false
+      });
+    } finally {
+      this.setState({ isSubmitting: false });
     }
   }
 
-  /**
-   * Enhanced getFormData to ensure we capture all form fields properly
-   */
-  protected getFormData(): Record<string, any> {
-    console.log('📋 Getting form data...');
-    
-    const data: Record<string, any> = {};
-    
-    // Method 1: Get data directly from our Input components
-    if (this.emailInput) {
-      const emailValue = this.emailInput.getValue();
-      data.email = emailValue;
-      console.log(`📧 Email from component: ${emailValue ? '***' : 'EMPTY'} (length: ${emailValue?.length || 0})`);
-    }
-    
-    if (this.passwordInput) {
-      const passwordValue = this.passwordInput.getValue();
-      data.password = passwordValue;
-      console.log(`🔒 Password from component: ${passwordValue ? '***' : 'EMPTY'} (length: ${passwordValue?.length || 0})`);
-    }
-    
-    // Method 2: Fallback to form element scanning
-    const form = this.querySelector('form');
-    if (form) {
-      console.log('📋 Form element found, scanning inputs as fallback...');
-      
-      // Get all input elements
-      const inputs = form.querySelectorAll('input');
-      console.log('📋 Input elements found:', inputs.length);
-      
-      inputs.forEach((input: HTMLInputElement) => {
-        if (input.name && input.value && !data[input.name]) {
-          data[input.name] = input.value;
-          console.log(`📋 Input ${input.name}: ${input.value ? '***' : 'EMPTY'} (length: ${input.value?.length || 0})`);
-        }
-      });
-      
-      // Method 3: FormData as final fallback - FIXED TYPE CASTING
-      try {
-        const formElement = form as HTMLFormElement;
-        const formData = new FormData(formElement);
-        for (const [key, value] of formData.entries()) {
-          if (!data[key] && value) { // Only if not already captured and has value
-            data[key] = value;
-            console.log(`📋 FormData ${key}: ${value ? '***' : 'EMPTY'} (length: ${value?.toString().length || 0})`);
-          }
-        }
-      } catch (error) {
-        console.warn('⚠️ FormData extraction failed:', error);
-      }
-    } else {
-      console.error('❌ Form element not found for data collection');
-    }
-    
-    console.log('📋 Final form data keys:', Object.keys(data));
-    console.log('📋 Final data validity:', {
-      hasEmail: !!data.email,
-      hasPassword: !!data.password,
-      emailLength: data.email?.length || 0,
-      passwordLength: data.password?.length || 0
-    });
-    
-    return data;
+  // EMERGENCY: Override base class form submission
+  protected async handleSubmit(event: Event): Promise<void> {
+    return this.handleNativeSubmit(event);
   }
 
   public render(): string {
     const { errors } = this.state;
 
     return `
-      <form data-component="login-form" class="space-y-6">
-        ${errors.general ? `
-          <div class="bg-red-50 border border-red-200 rounded-md p-4">
-            <p class="text-red-800 text-sm">${errors.general}</p>
+      <div data-component="login-form" class="w-full max-w-md mx-auto">
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <div class="text-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">Welcome Back</h2>
+            <p class="text-gray-600">Sign in to your account</p>
           </div>
-        ` : ''}
 
-        <div id="email-container"></div>
-        <div id="password-container"></div>
+          ${errors.general ? `
+            <div class="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+              <p class="text-red-800 text-sm">${errors.general}</p>
+            </div>
+          ` : ''}
 
-        <div id="button-container" class="w-full"></div>
+          <form class="space-y-6" novalidate>
+            <div id="email-container"></div>
+            <div id="password-container"></div>
 
-        <div class="text-center">
-          <p class="text-sm text-gray-600">
-            Don't have an account? 
-            <a href="#" class="text-blue-600 hover:text-blue-500">Sign up</a>
-          </p>
+            <div id="button-container" class="w-full"></div>
+
+            <div class="text-center">
+              <p class="text-sm text-gray-600">
+                Don't have an account? 
+                <a href="#" class="text-blue-600 hover:text-blue-500 underline">Sign up</a>
+              </p>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
     `;
   }
 }

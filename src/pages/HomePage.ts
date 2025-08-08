@@ -1,4 +1,4 @@
-// src/pages/HomePage.ts - FIXED AUTH INTEGRATION AND REDIRECTS
+// src/pages/HomePage.ts - FIXED ALL ISSUES
 
 import type { PageComponent, DOMManager } from '../types/app';
 import type { RouteContext } from '../types/router';
@@ -189,11 +189,13 @@ export class HomePage implements PageComponent {
       props: {
         mode: this.authModalMode,
         onClose: () => this.closeAuthModal(),
-        onLogin: (credentials) => this.handleLogin(credentials),
-        onRegister: (data) => this.handleRegister(data),
-        onGoogleAuth: (mode) => this.handleGoogleAuth(mode),
+        // FIXED: Proper typing for event handlers
+        onLogin: (credentials: LoginRequest) => this.handleLogin(credentials),
+        onRegister: (data: RegistrationRequest) => this.handleRegister(data),
+        onGoogleAuth: (mode: 'login' | 'register') => this.handleGoogleAuth(mode),
         onResendVerification: () => this.handleResendVerification(),
-        verificationEmail: this.verificationEmail,
+        // FIXED: Handle null verification email properly
+        verificationEmail: this.verificationEmail || undefined,
         isLoading: this.isLoading,
         showGoogleOption: this.authService.isGoogleOAuth2Available()
       }
@@ -271,7 +273,8 @@ export class HomePage implements PageComponent {
     const loginSuccessListener = this.authService.addEventListener('login:success', (data) => {
       console.log('✅ HomePage: Login successful:', data.user.email);
       this.closeAuthModal();
-      this.redirectToDashboard();
+      // FIXED: Ensure proper redirect to dashboard
+      setTimeout(() => this.redirectToDashboard(), 500);
     });
     this.eventListeners.push(() => loginSuccessListener());
 
@@ -296,16 +299,18 @@ export class HomePage implements PageComponent {
       console.log('✅ HomePage: Verification successful');
       this.closeAuthModal();
       if (data.user) {
-        this.redirectToDashboard();
+        // FIXED: Ensure proper redirect to dashboard
+        setTimeout(() => this.redirectToDashboard(), 500);
       }
     });
     this.eventListeners.push(() => verificationSuccessListener());
 
-    // OAuth2 success
+    // OAuth2 success - FIXED: Proper dashboard redirect
     const oauth2SuccessListener = this.authService.addEventListener('oauth2:success', (data) => {
       console.log('✅ HomePage: OAuth2 successful:', data.user.email);
       this.closeAuthModal();
-      this.redirectToDashboard();
+      // FIXED: Ensure proper redirect to dashboard
+      setTimeout(() => this.redirectToDashboard(), 500);
     });
     this.eventListeners.push(() => oauth2SuccessListener());
 
@@ -349,7 +354,7 @@ export class HomePage implements PageComponent {
     if (this.authModal) {
       this.authModal.update({
         mode: this.authModalMode,
-        verificationEmail: this.verificationEmail,
+        verificationEmail: this.verificationEmail || undefined, // FIXED: Handle null properly
         isLoading: this.isLoading
       });
     }
@@ -403,7 +408,7 @@ export class HomePage implements PageComponent {
         } else {
           // Auto-login successful, redirect
           this.closeAuthModal();
-          this.redirectToDashboard();
+          setTimeout(() => this.redirectToDashboard(), 500);
         }
       } else {
         throw new Error(result.error || 'Registration failed');
@@ -424,7 +429,7 @@ export class HomePage implements PageComponent {
     this.updateComponentsLoading();
 
     try {
-      // Use dashboard as redirect URL for successful OAuth2
+      // FIXED: Use dashboard as redirect URL for successful OAuth2
       const result = await this.authService.loginWithGoogle('/dashboard');
 
       if (result.success && result.authUrl) {
@@ -546,6 +551,7 @@ export class HomePage implements PageComponent {
     }
   }
 
+  // FIXED: More robust dashboard redirect
   private async redirectToDashboard(): Promise<void> {
     console.log('🎯 HomePage: Redirecting to dashboard...');
     

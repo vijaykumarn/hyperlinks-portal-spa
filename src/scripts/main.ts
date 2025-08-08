@@ -1,4 +1,4 @@
-// src/scripts/main.ts - UPDATED WITH AUTH SERVICES
+// src/scripts/main.ts - FIXED APISERVICE INITIALIZATION
 
 import { App } from '../core/App';
 import type { AppConfig } from '../types/app';
@@ -6,6 +6,7 @@ import { StateManager } from '../core/state/StateManager';
 import { SessionService } from '../services/SessionService';
 import { AuthService } from '../services/auth/AuthService';
 import { ApiConfig } from '../services/core/ApiConfig';
+import { ApiService } from '../services/ApiService'; // ADDED: Import ApiService
 import '../styles/main.css';
 
 // Initialize API configuration first
@@ -18,7 +19,14 @@ if (!configValidation.isValid) {
   throw new Error('Invalid application configuration: ' + configValidation.errors.join(', '));
 }
 
-// Initialize services
+// CRITICAL FIX: Initialize ApiService before anything else
+console.log('🔧 Initializing ApiService...');
+const apiService = ApiService.initialize({
+  baseUrl: apiConfig.getResourceServerConfig().baseUrl
+});
+console.log('✅ ApiService initialized with base URL:', apiService.getBaseUrl());
+
+// Initialize other services
 const stateManager = StateManager.getInstance();
 const sessionService = SessionService.getInstance();
 const authService = AuthService.getInstance();
@@ -29,13 +37,14 @@ if (import.meta.env.MODE === 'development') {
   (window as any).__SESSION__ = sessionService;
   (window as any).__AUTH__ = authService;
   (window as any).__API_CONFIG__ = apiConfig;
+  (window as any).__API_SERVICE__ = apiService; // ADDED: Expose ApiService
 }
 
 /**
  * Application configuration
  */
 const config: AppConfig = {
-  apiBaseUrl: apiConfig.getAuthServerConfig().baseUrl, // Legacy compatibility
+  apiBaseUrl: apiConfig.getAuthServerConfig().baseUrl,
   environment: (import.meta.env.MODE as 'development' | 'production' | 'test') || 'development',
   enableAnalytics: import.meta.env.VITE_ENABLE_ANALYTICS === 'true',
   enableLogging: import.meta.env.MODE === 'development'
@@ -47,7 +56,37 @@ const config: AppConfig = {
 let app: App | null = null;
 
 /**
- * Handle OAuth2 callbacks
+ * EMERGENCY FIX: Direct redirect to dashboard after OAuth2
+ */
+function forceRedirectToDashboard(): void {
+  console.log('🚨 EMERGENCY: Force redirecting to dashboard');
+  
+  // Method 1: Try router if available
+  try {
+    if (app) {
+      const router = app.getRouter();
+      if (router) {
+        router.push('/dashboard').then(() => {
+          console.log('✅ Router redirect successful');
+        }).catch((error) => {
+          console.error('❌ Router redirect failed:', error);
+          // Fallback to window.location
+          window.location.href = '/dashboard';
+        });
+        return;
+      }
+    }
+  } catch (error) {
+    console.error('❌ Router method failed:', error);
+  }
+  
+  // Method 2: Direct window.location
+  console.log('🔄 Using window.location redirect');
+  window.location.href = '/dashboard';
+}
+
+/**
+ * Handle OAuth2 callbacks - EMERGENCY FIX
  */
 async function handleOAuth2Callback(): Promise<void> {
   const currentUrl = window.location.href;
@@ -64,14 +103,18 @@ async function handleOAuth2Callback(): Promise<void> {
       if (result.success) {
         console.log('✅ OAuth2 callback successful');
         
-        // Clean up URL
-        window.history.replaceState({}, document.title, result.redirectTo || '/dashboard');
+        // EMERGENCY FIX: Immediate redirect without waiting
+        console.log('🚨 Forcing immediate dashboard redirect');
         
-        // Let the app handle navigation
-        if (app) {
-          const router = app.getRouter();
-          await router.push(result.redirectTo || '/dashboard');
-        }
+        // Clear the callback URL immediately
+        window.history.replaceState({}, document.title, '/dashboard');
+        
+        // Wait a moment for history to update, then force redirect
+        setTimeout(() => {
+          forceRedirectToDashboard();
+        }, 100);
+        
+        return; // Exit early
       } else {
         console.error('❌ OAuth2 callback failed:', result.error);
         showOAuth2ErrorState(result.error || 'OAuth2 authentication failed');
@@ -104,6 +147,7 @@ function showOAuth2LoadingState(): void {
           <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <h1 class="text-2xl font-bold mb-2">Processing Authentication</h1>
           <p class="text-gray-600">Please wait while we complete your login...</p>
+          <p class="text-sm text-gray-500 mt-4">Redirecting to dashboard...</p>
         </div>
       </div>
     `;
@@ -138,6 +182,7 @@ async function initializeApp(): Promise<void> {
     console.log('Environment:', config.environment);
     console.log('Auth Server:', apiConfig.getAuthServerConfig().baseUrl);
     console.log('Resource Server:', apiConfig.getResourceServerConfig().baseUrl);
+    console.log('ApiService Base URL:', apiService.getBaseUrl());
     console.log('Google OAuth2 enabled:', authService.isGoogleOAuth2Available());
 
     // Create app instance
@@ -178,12 +223,34 @@ async function initializeApp(): Promise<void> {
 }
 
 /**
- * Setup auth event listeners
+ * Setup auth event listeners with emergency redirect
  */
 function setupAuthEventListeners(): void {
-  // Listen for auth events
+  // EMERGENCY: Force dashboard redirect on any successful login
   authService.addEventListener('login:success', (data) => {
     console.log('👤 User logged in successfully:', data.user.email);
+    console.log('🚨 EMERGENCY: Forcing dashboard redirect');
+    setTimeout(() => {
+      forceRedirectToDashboard();
+    }, 500);
+  });
+
+  authService.addEventListener('oauth2:success', (data) => {
+    console.log('🔗 OAuth2 login successful:', data.user.email);
+    console.log('🚨 EMERGENCY: Forcing dashboard redirect');
+    setTimeout(() => {
+      forceRedirectToDashboard();
+    }, 500);
+  });
+
+  authService.addEventListener('verification:success', (data) => {
+    console.log('✅ Verification successful');
+    if (data.user) {
+      console.log('🚨 EMERGENCY: Forcing dashboard redirect');
+      setTimeout(() => {
+        forceRedirectToDashboard();
+      }, 500);
+    }
   });
 
   authService.addEventListener('registration:success', (data) => {
@@ -196,15 +263,14 @@ function setupAuthEventListeners(): void {
 
   authService.addEventListener('session:expired', () => {
     console.log('⏰ Session expired');
-    // Could show a notification here
-  });
-
-  authService.addEventListener('oauth2:success', (data) => {
-    console.log('🔗 OAuth2 login successful:', data.user.email);
   });
 
   authService.addEventListener('oauth2:failed', (data) => {
     console.error('❌ OAuth2 login failed:', data.error);
+  });
+
+  authService.addEventListener('login:failed', (data) => {
+    console.error('❌ Login failed:', data.error);
   });
 
   // Listen for auth modal mode changes
@@ -320,10 +386,11 @@ async function bootstrap(): Promise<void> {
       throw new Error('Required DOM elements not found');
     }
 
-    // Handle OAuth2 callback if present
+    // CRITICAL: Handle OAuth2 callback FIRST before anything else
     if (authService.isOAuth2Callback()) {
+      console.log('🚨 PRIORITY: OAuth2 callback detected, handling immediately');
       await handleOAuth2Callback();
-      return; // OAuth2 callback handling takes over
+      return; // Exit early - OAuth2 handling takes over
     }
 
     // Show initial loading state
@@ -367,11 +434,16 @@ if (config.environment === 'development') {
     getInstance: () => app,
     getConfig: () => config,
     getAuthService: () => authService,
+    getApiService: () => apiService, // ADDED: Expose ApiService
     restart: async () => {
       if (app) {
         await app.destroy();
       }
       await initializeApp();
+    },
+    // EMERGENCY: Manual redirect function
+    forceDashboard: () => {
+      forceRedirectToDashboard();
     }
   };
 }
@@ -410,21 +482,6 @@ bootstrap().catch((error) => {
         <p style="color: #6b7280; margin-bottom: 24px; line-height: 1.5;">
           The application failed to start due to a critical error. Please try refreshing the page.
         </p>
-        <details style="text-align: left; margin-bottom: 24px;">
-          <summary style="cursor: pointer; color: #6b7280; margin-bottom: 8px;">
-            Error Details
-          </summary>
-          <pre style="
-            background: #f3f4f6;
-            padding: 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #374151;
-            overflow: auto;
-            white-space: pre-wrap;
-            word-break: break-word;
-          ">${error instanceof Error ? error.stack || error.message : String(error)}</pre>
-        </details>
         <button 
           onclick="window.location.reload()" 
           style="

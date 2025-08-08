@@ -1,4 +1,4 @@
-// src/services/auth/AuthService.ts - COMPLETE IMPLEMENTATION
+// src/services/auth/AuthService.ts - FIXED UNUSED IMPORT
 
 import { StateManager } from '../../core/state/StateManager';
 import { AuthApiClient } from './AuthApiClient';
@@ -13,7 +13,7 @@ import type {
   PasswordStrength
 } from './types';
 import type { UserData } from '../../types/app'; // App's UserData type
-import type { ApiResponse } from '../core/HttpClient';
+// REMOVED: Unused ApiResponse import
 
 /**
  * Main Authentication Service
