@@ -1,33 +1,41 @@
-// src/scripts/main.ts - FIXED VERSION WITHOUT MOCK API
+// src/scripts/main.ts - UPDATED WITH AUTH SERVICES
 
 import { App } from '../core/App';
 import type { AppConfig } from '../types/app';
 import { StateManager } from '../core/state/StateManager';
 import { SessionService } from '../services/SessionService';
-import { ApiService } from '../services/ApiService';
+import { AuthService } from '../services/auth/AuthService';
+import { ApiConfig } from '../services/core/ApiConfig';
 import '../styles/main.css';
+
+// Initialize API configuration first
+const apiConfig = ApiConfig.getInstance();
+
+// Validate configuration
+const configValidation = apiConfig.validateConfig();
+if (!configValidation.isValid) {
+  console.error('❌ Invalid configuration:', configValidation.errors);
+  throw new Error('Invalid application configuration: ' + configValidation.errors.join(', '));
+}
 
 // Initialize services
 const stateManager = StateManager.getInstance();
 const sessionService = SessionService.getInstance();
-
-// Initialize API service (no mock API)
-const apiService = ApiService.initialize({
-  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'
-});
+const authService = AuthService.getInstance();
 
 // Make services globally available for debugging
 if (import.meta.env.MODE === 'development') {
   (window as any).__STATE__ = stateManager;
   (window as any).__SESSION__ = sessionService;
-  (window as any).__API__ = apiService;
+  (window as any).__AUTH__ = authService;
+  (window as any).__API_CONFIG__ = apiConfig;
 }
 
 /**
  * Application configuration
  */
 const config: AppConfig = {
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
+  apiBaseUrl: apiConfig.getAuthServerConfig().baseUrl, // Legacy compatibility
   environment: (import.meta.env.MODE as 'development' | 'production' | 'test') || 'development',
   enableAnalytics: import.meta.env.VITE_ENABLE_ANALYTICS === 'true',
   enableLogging: import.meta.env.MODE === 'development'
@@ -39,13 +47,98 @@ const config: AppConfig = {
 let app: App | null = null;
 
 /**
+ * Handle OAuth2 callbacks
+ */
+async function handleOAuth2Callback(): Promise<void> {
+  const currentUrl = window.location.href;
+  
+  if (authService.isOAuth2Callback(currentUrl)) {
+    console.log('🔄 OAuth2 callback detected, processing...');
+    
+    try {
+      // Show loading state
+      showOAuth2LoadingState();
+      
+      const result = await authService.handleOAuth2Callback(currentUrl);
+      
+      if (result.success) {
+        console.log('✅ OAuth2 callback successful');
+        
+        // Clean up URL
+        window.history.replaceState({}, document.title, result.redirectTo || '/dashboard');
+        
+        // Let the app handle navigation
+        if (app) {
+          const router = app.getRouter();
+          await router.push(result.redirectTo || '/dashboard');
+        }
+      } else {
+        console.error('❌ OAuth2 callback failed:', result.error);
+        showOAuth2ErrorState(result.error || 'OAuth2 authentication failed');
+        
+        // Redirect to home after error
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('❌ OAuth2 callback error:', error);
+      showOAuth2ErrorState('An unexpected error occurred during authentication');
+      
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 3000);
+    }
+  }
+}
+
+/**
+ * Show OAuth2 loading state
+ */
+function showOAuth2LoadingState(): void {
+  const appRoot = document.getElementById('app');
+  if (appRoot) {
+    appRoot.innerHTML = `
+      <div class="flex items-center justify-center min-h-screen bg-gray-50">
+        <div class="text-center">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <h1 class="text-2xl font-bold mb-2">Processing Authentication</h1>
+          <p class="text-gray-600">Please wait while we complete your login...</p>
+        </div>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Show OAuth2 error state
+ */
+function showOAuth2ErrorState(error: string): void {
+  const appRoot = document.getElementById('app');
+  if (appRoot) {
+    appRoot.innerHTML = `
+      <div class="flex items-center justify-center min-h-screen bg-gray-50">
+        <div class="text-center max-w-md mx-auto p-6">
+          <div class="text-red-500 text-6xl mb-4">⚠️</div>
+          <h1 class="text-2xl font-bold text-gray-800 mb-2">Authentication Failed</h1>
+          <p class="text-gray-600 mb-4">${error}</p>
+          <p class="text-sm text-gray-500">Redirecting to home page...</p>
+        </div>
+      </div>
+    `;
+  }
+}
+
+/**
  * Initialize the application
  */
 async function initializeApp(): Promise<void> {
   try {
     console.log('Starting URL Shortener application...');
     console.log('Environment:', config.environment);
-    console.log('API Base URL:', config.apiBaseUrl);
+    console.log('Auth Server:', apiConfig.getAuthServerConfig().baseUrl);
+    console.log('Resource Server:', apiConfig.getResourceServerConfig().baseUrl);
+    console.log('Google OAuth2 enabled:', authService.isGoogleOAuth2Available());
 
     // Create app instance
     app = new App(config);
@@ -85,6 +178,42 @@ async function initializeApp(): Promise<void> {
 }
 
 /**
+ * Setup auth event listeners
+ */
+function setupAuthEventListeners(): void {
+  // Listen for auth events
+  authService.addEventListener('login:success', (data) => {
+    console.log('👤 User logged in successfully:', data.user.email);
+  });
+
+  authService.addEventListener('registration:success', (data) => {
+    console.log('📝 User registered successfully:', data.userId);
+  });
+
+  authService.addEventListener('verification:required', (data) => {
+    console.log('📧 Email verification required for:', data.email);
+  });
+
+  authService.addEventListener('session:expired', () => {
+    console.log('⏰ Session expired');
+    // Could show a notification here
+  });
+
+  authService.addEventListener('oauth2:success', (data) => {
+    console.log('🔗 OAuth2 login successful:', data.user.email);
+  });
+
+  authService.addEventListener('oauth2:failed', (data) => {
+    console.error('❌ OAuth2 login failed:', data.error);
+  });
+
+  // Listen for auth modal mode changes
+  window.addEventListener('auth-mode-change', (event) => {
+    console.log('🔄 Auth modal mode change:', (event as CustomEvent).detail.mode);
+  });
+}
+
+/**
  * Handle page visibility changes for performance optimization
  */
 function handleVisibilityChange(): void {
@@ -92,6 +221,13 @@ function handleVisibilityChange(): void {
     console.log('App hidden - pausing non-critical operations');
   } else {
     console.log('App visible - resuming operations');
+    
+    // Validate session when app becomes visible
+    if (authService.isAuthenticated()) {
+      authService.validateSession().catch(error => {
+        console.warn('Session validation failed on visibility change:', error);
+      });
+    }
   }
 }
 
@@ -113,6 +249,9 @@ function setupGlobalListeners(): void {
 
   // Handle browser unload
   window.addEventListener('beforeunload', handleBeforeUnload);
+
+  // Setup auth event listeners
+  setupAuthEventListeners();
 
   // Handle critical errors during development
   if (config.environment === 'development') {
@@ -181,6 +320,12 @@ async function bootstrap(): Promise<void> {
       throw new Error('Required DOM elements not found');
     }
 
+    // Handle OAuth2 callback if present
+    if (authService.isOAuth2Callback()) {
+      await handleOAuth2Callback();
+      return; // OAuth2 callback handling takes over
+    }
+
     // Show initial loading state
     showInitialLoading();
 
@@ -221,6 +366,7 @@ if (config.environment === 'development') {
   (window as any).__APP__ = {
     getInstance: () => app,
     getConfig: () => config,
+    getAuthService: () => authService,
     restart: async () => {
       if (app) {
         await app.destroy();

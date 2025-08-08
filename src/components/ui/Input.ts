@@ -46,6 +46,12 @@ export class Input extends Component<InputProps> {
       }
     });
 
+    // Handle keyup events for immediate feedback
+    this.addEventListener(input, 'keyup', (e) => {
+      const target = e.target as HTMLInputElement;
+      this.currentValue = target.value;
+    });
+
     // Also handle 'change' event for better compatibility
     this.addEventListener(input, 'change', (e) => {
       const target = e.target as HTMLInputElement;
@@ -56,6 +62,8 @@ export class Input extends Component<InputProps> {
     // Handle blur events
     if (this.props.onBlur) {
       this.addEventListener(input, 'blur', (e) => {
+        const target = e.target as HTMLInputElement;
+        this.currentValue = target.value;
         console.log(`👁️ Input ${this.props.name} blurred with value:`, this.currentValue ? '***' : 'EMPTY');
         this.props.onBlur!(e);
       });
