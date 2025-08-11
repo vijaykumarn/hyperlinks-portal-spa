@@ -612,35 +612,55 @@ export class AuthService {
    * Validate current session
    */
   async validateSession(): Promise<{ 
-    valid: boolean; 
-    user?: UserData; 
-    error?: string; 
-  }> {
-    try {
-      console.log('🔍 AuthService: Validating session...');
+  valid: boolean; 
+  user?: UserData; 
+  error?: string; 
+}> {
+  try {
+    console.log('🔍 AuthService: Validating session...');
 
-      const response = await this.authApiClient.validateSession();
+    const response = await this.authApiClient.validateSession();
 
-      if (!response.success || !response.data) {
-        console.warn('⚠️ AuthService: Session validation failed:', response.error);
-        
-        // Only clear session if we currently think we're authenticated
-        if (this.isAuthenticated()) {
-          this.handleSessionExpired();
-        }
-        
-        return {
-          valid: false,
-          error: response.error || 'Session validation failed'
+    if (!response.success || !response.data) {
+      console.warn('⚠️ AuthService: Session validation failed:', response.error);
+      
+      // Only clear session if we currently think we're authenticated
+      if (this.isAuthenticated()) {
+        this.handleSessionExpired();
+      }
+      
+      return {
+        valid: false,
+        error: response.error || 'Session validation failed'
+      };
+    }
+
+    // FIXED: Handle new backend response format with proper type conversion
+    const { authenticated, valid, userId, email, user } = response.data;
+
+    console.log('🔍 AuthService: Session validation response:', { authenticated, valid, userId, email, hasUser: !!user });
+
+    // FIXED: Check for authenticated AND valid flags
+    if (authenticated && valid) {
+      let appUser: UserData | undefined;
+
+      // Try to get user from response, fallback to constructing from basic fields
+      if (user) {
+        // Full user object returned
+        appUser = this.mapAuthUserToAppUser(user);
+      } else if (userId && email) {
+        // FIXED: Convert userId to string and construct user object
+        appUser = {
+          id: String(userId), // Convert number to string
+          email: email,
+          name: email.split('@')[0], // Fallback name
+          role: 'USER', // Default role
+          createdAt: Date.now() // Fallback timestamp
         };
+        console.log('🔄 AuthService: Constructed user from basic fields:', appUser.email);
       }
 
-      const { valid, user } = response.data;
-
-      if (valid && user) {
-        // Update user data if session is valid
-        const appUser = this.mapAuthUserToAppUser(user);
-        
+      if (appUser) {
         // Only update if we don't already have this user or user data changed
         const currentUser = this.getCurrentUser();
         if (!currentUser || currentUser.id !== appUser.id || currentUser.email !== appUser.email) {
@@ -653,30 +673,39 @@ export class AuthService {
           user: appUser
         };
       } else {
-        console.warn('⚠️ AuthService: Session invalid or no user data');
-        
-        // Only clear session if we currently think we're authenticated
-        if (this.isAuthenticated()) {
-          this.handleSessionExpired();
-        }
-        
-        return { valid: false };
+        console.warn('⚠️ AuthService: Session valid but failed to construct user data');
+        console.warn('⚠️ AuthService: Raw data:', { userId, email, user });
+        return {
+          valid: false,
+          error: 'Failed to construct user data from session'
+        };
       }
-
-    } catch (error) {
-      console.error('❌ AuthService: Session validation error:', error);
+    } else {
+      console.warn('⚠️ AuthService: Session invalid or user not authenticated');
+      console.warn('⚠️ AuthService: Flags:', { authenticated, valid });
       
       // Only clear session if we currently think we're authenticated
       if (this.isAuthenticated()) {
         this.handleSessionExpired();
       }
       
-      return {
-        valid: false,
-        error: error instanceof Error ? error.message : 'Session validation error'
-      };
+      return { valid: false };
     }
+
+  } catch (error) {
+    console.error('❌ AuthService: Session validation error:', error);
+    
+    // Only clear session if we currently think we're authenticated
+    if (this.isAuthenticated()) {
+      this.handleSessionExpired();
+    }
+    
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : 'Session validation error'
+    };
   }
+}
 
   /**
    * Get all user sessions
