@@ -1,4 +1,4 @@
-// src/scripts/main.ts - FIXED APISERVICE INITIALIZATION
+// src/scripts/main.ts - FIXED OAUTH2 CALLBACK HANDLING
 
 import { App } from '../core/App';
 import type { AppConfig } from '../types/app';
@@ -56,50 +56,161 @@ const config: AppConfig = {
 let app: App | null = null;
 
 /**
- * Handle OAuth2 callbacks - FIXED VERSION
+ * Handle OAuth2 callbacks - ENHANCED AND FIXED
  */
-async function handleOAuth2Callback(): Promise<void> {
+async function handleOAuth2Callback(): Promise<boolean> {
   const currentUrl = window.location.href;
   
-  if (authService.isOAuth2Callback(currentUrl)) {
-    console.log('🔄 OAuth2 callback detected, processing...');
+  // ENHANCED: Check if this is an OAuth2 callback with detailed logging
+  const isOAuth2 = authService.isOAuth2Callback(currentUrl);
+  
+  console.log('🔍 OAuth2 callback check:', {
+    currentUrl,
+    isOAuth2,
+    hasStoredState: !!sessionStorage.getItem('oauth2_state'),
+    urlParams: Object.fromEntries(new URL(currentUrl).searchParams.entries()),
+    pathname: new URL(currentUrl).pathname
+  });
+  
+  if (!isOAuth2) {
+    return false; // Not an OAuth2 callback
+  }
+
+  console.log('🔄 OAuth2 callback detected, processing...', currentUrl);
+  
+  // Check for OAuth2 error in URL first
+  const urlObj = new URL(currentUrl);
+  if (urlObj.searchParams.has('oauth2_error') || urlObj.searchParams.has('error')) {
+    console.error('❌ OAuth2 error detected in URL parameters');
     
+    // Show error and clean up URL
+    showOAuth2ErrorState('OAuth2 authentication was cancelled or failed');
+    
+    // Clean up URL and redirect to home
+    setTimeout(() => {
+      window.history.replaceState({}, document.title, '/');
+      window.location.reload();
+    }, 3000);
+    
+    return false;
+  }
+  
+  try {
+    // Show loading state
+    showOAuth2LoadingState();
+    
+    // ENHANCED: Add more time for backend processing
+    console.log('⏳ Waiting for backend OAuth2 processing...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const result = await authService.handleOAuth2Callback(currentUrl);
+    
+    if (result.success) {
+      console.log('✅ OAuth2 callback successful', result.user ? `for user: ${result.user.email}` : '');
+      
+      // Clean up URL parameters while preserving the path
+      const cleanUrl = new URL(window.location.href);
+      
+      // Remove OAuth2 parameters
+      cleanUrl.searchParams.delete('code');
+      cleanUrl.searchParams.delete('state');
+      cleanUrl.searchParams.delete('scope');
+      cleanUrl.searchParams.delete('authuser');
+      cleanUrl.searchParams.delete('prompt');
+      
+      // Keep welcome parameter if present
+      const hasWelcome = cleanUrl.searchParams.has('welcome');
+      
+      // FIXED: Ensure we redirect to dashboard after successful OAuth2
+      let finalPath = '/dashboard';
+      if (hasWelcome) {
+        finalPath = '/dashboard?welcome=true';
+      }
+      
+      // Update URL without OAuth2 parameters
+      window.history.replaceState({}, document.title, finalPath);
+      
+      // Set a flag to indicate successful OAuth2 processing
+      sessionStorage.setItem('oauth2_processed', 'true');
+      sessionStorage.setItem('oauth2_processed_time', Date.now().toString());
+      
+      console.log('🎯 OAuth2 processing complete, URL cleaned:', finalPath);
+      return true; // OAuth2 processed successfully
+      
+    } else {
+      console.error('❌ OAuth2 callback failed:', result.error);
+      showOAuth2ErrorState(result.error || 'OAuth2 authentication failed');
+      
+      // Redirect to home after error
+      setTimeout(() => {
+        window.history.replaceState({}, document.title, '/');
+        window.location.reload();
+      }, 3000);
+      
+      return false;
+    }
+    
+  } catch (error) {
+    console.error('❌ OAuth2 callback error:', error);
+    showOAuth2ErrorState('An unexpected error occurred during authentication');
+    
+    // Redirect to home after error
+    setTimeout(() => {
+      window.history.replaceState({}, document.title, '/');
+      window.location.reload();
+    }, 3000);
+    
+    return false;
+  }
+}
+
+/**
+ * Check and handle OAuth2 success state - ENHANCED
+ */
+async function handleOAuth2SuccessState(): Promise<void> {
+  const oauth2Processed = sessionStorage.getItem('oauth2_processed');
+  
+  if (oauth2Processed === 'true') {
+    console.log('🎉 OAuth2 was successfully processed, validating session...');
+    
+    // Clear the flag
+    sessionStorage.removeItem('oauth2_processed');
+    sessionStorage.removeItem('oauth2_processed_time');
+    
+    // Validate that we have a valid session
     try {
-      // Show loading state
-      showOAuth2LoadingState();
+      const sessionValidation = await authService.validateSession();
       
-      const result = await authService.handleOAuth2Callback(currentUrl);
-      
-      if (result.success) {
-        console.log('✅ OAuth2 callback successful');
+      if (sessionValidation.valid && sessionValidation.user) {
+        console.log('✅ OAuth2 session validated successfully for user:', sessionValidation.user.email);
         
-        // Clear callback parameters from URL
-        const cleanUrl = new URL(window.location.href);
-        cleanUrl.searchParams.delete('code');
-        cleanUrl.searchParams.delete('state');
-        cleanUrl.searchParams.delete('scope');
+        // Show success state briefly if we're still on a non-dashboard page
+        const currentPath = window.location.pathname;
+        if (!currentPath.startsWith('/dashboard')) {
+          showOAuth2SuccessState(sessionValidation.user);
+          
+          // Redirect to dashboard after showing success
+          setTimeout(() => {
+            window.history.replaceState({}, document.title, '/dashboard');
+            // Trigger router navigation
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }, 1500);
+        } else {
+          // Already on dashboard, just show brief success
+          showOAuth2SuccessState(sessionValidation.user);
+          setTimeout(() => {
+            // Allow normal app initialization to continue
+          }, 1000);
+        }
         
-        // Update URL without parameters
-        window.history.replaceState({}, document.title, '/dashboard');
-        
-        // Let the normal app initialization continue
-        // The router will handle navigation to dashboard
         return;
       } else {
-        console.error('❌ OAuth2 callback failed:', result.error);
-        showOAuth2ErrorState(result.error || 'OAuth2 authentication failed');
-        
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 3000);
+        console.warn('⚠️ OAuth2 session validation failed after processing');
+        // Continue with normal app initialization
       }
     } catch (error) {
-      console.error('❌ OAuth2 callback error:', error);
-      showOAuth2ErrorState('An unexpected error occurred during authentication');
-      
-      setTimeout(() => {
-        window.location.href = '/';
-      }, 3000);
+      console.error('❌ OAuth2 session validation error:', error);
+      // Continue with normal app initialization
     }
   }
 }
@@ -116,7 +227,26 @@ function showOAuth2LoadingState(): void {
           <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <h1 class="text-2xl font-bold mb-2">Processing Authentication</h1>
           <p class="text-gray-600">Please wait while we complete your login...</p>
-          <p class="text-sm text-gray-500 mt-4">Redirecting to dashboard...</p>
+          <p class="text-sm text-gray-500 mt-4">Establishing secure session...</p>
+        </div>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Show OAuth2 success state
+ */
+function showOAuth2SuccessState(user: any): void {
+  const appRoot = document.getElementById('app');
+  if (appRoot) {
+    appRoot.innerHTML = `
+      <div class="flex items-center justify-center min-h-screen bg-gray-50">
+        <div class="text-center">
+          <div class="text-green-500 text-6xl mb-4">✅</div>
+          <h1 class="text-2xl font-bold mb-2">Welcome ${user.name || user.email}!</h1>
+          <p class="text-gray-600">Authentication successful</p>
+          <p class="text-sm text-gray-500 mt-4">Loading your dashboard...</p>
         </div>
       </div>
     `;
@@ -192,7 +322,7 @@ async function initializeApp(): Promise<void> {
 }
 
 /**
- * Setup auth event listeners - FIXED VERSION
+ * Setup auth event listeners - ENHANCED VERSION
  */
 function setupAuthEventListeners(): void {
   authService.addEventListener('login:success', (data) => {
@@ -328,7 +458,7 @@ function showInitialLoading(): void {
 }
 
 /**
- * Main application bootstrap function - FIXED VERSION
+ * Main application bootstrap function - ENHANCED FOR OAUTH2
  */
 async function bootstrap(): Promise<void> {
   try {
@@ -340,20 +470,22 @@ async function bootstrap(): Promise<void> {
       throw new Error('Required DOM elements not found');
     }
 
-    // Handle OAuth2 callback FIRST if present
-    const isOAuth2 = authService.isOAuth2Callback();
-    if (isOAuth2) {
-      console.log('🚨 OAuth2 callback detected, handling before app init');
-      await handleOAuth2Callback();
-      
-      // If OAuth2 handling didn't redirect, continue with normal app init
-      if (window.location.pathname !== '/dashboard') {
-        console.log('🔄 OAuth2 handled, continuing with app initialization');
-      }
+    // CRITICAL: Handle OAuth2 callback FIRST if present
+    const isOAuth2Callback = await handleOAuth2Callback();
+    
+    if (isOAuth2Callback) {
+      console.log('🔄 OAuth2 callback processed, continuing with app initialization...');
+      // Small delay to ensure session is established
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    // Show initial loading state
-    showInitialLoading();
+    // Check for successful OAuth2 state
+    await handleOAuth2SuccessState();
+
+    // Show initial loading state (unless we're showing OAuth2 states)
+    if (!isOAuth2Callback && !sessionStorage.getItem('oauth2_processed')) {
+      showInitialLoading();
+    }
 
     // Setup global event listeners
     setupGlobalListeners();

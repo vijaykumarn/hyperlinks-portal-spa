@@ -17,6 +17,9 @@ export class OAuth2Service {
   private constructor() {
     this.apiConfig = ApiConfig.getInstance();
     this.authApiClient = new AuthApiClient();
+
+    // Clean up any stale OAuth2 data on initialization
+    this.cleanupStaleData();
   }
 
   public static getInstance(): OAuth2Service {
@@ -50,19 +53,15 @@ export class OAuth2Service {
 
       const { authorizationUrl, state } = response.data;
 
-      // Store OAuth2 state
-      this.currentState = {
+      // Create OAuth2 state object
+      const oauth2State: OAuth2State = {
         state,
         provider: 'google',
         redirectUrl
       };
 
-      // Store state in sessionStorage for callback handling
-      try {
-        sessionStorage.setItem('oauth2_state', JSON.stringify(this.currentState));
-      } catch (error) {
-        console.warn('⚠️ OAuth2Service: Failed to store state in sessionStorage:', error);
-      }
+      // Store OAuth2 state with timestamp
+      this.storeOAuth2State(oauth2State);
 
       console.log('✅ OAuth2Service: Google auth URL generated successfully');
       
@@ -96,60 +95,87 @@ export class OAuth2Service {
       const urlParams = this.parseCallbackUrl(callbackUrl);
       
       // Check for error in callback
-      if (urlParams.error) {
-        console.error('❌ OAuth2Service: OAuth2 error from provider:', urlParams.error);
+      if (urlParams.error || urlParams.oauth2_error) {
+        console.error('❌ OAuth2Service: OAuth2 error from provider:', urlParams.error || urlParams.oauth2_error);
         return {
           success: false,
-          error: this.getOAuth2ErrorMessage(urlParams.error, urlParams.error_description)
+          error: this.getOAuth2ErrorMessage(urlParams.error || urlParams.oauth2_error, urlParams.error_description)
         };
       }
 
-      // Validate state parameter
-      const stateValidation = this.validateState(urlParams.state);
-      if (!stateValidation.isValid) {
-        console.error('❌ OAuth2Service: State validation failed:', stateValidation.error);
+      // For successful OAuth2 redirects (like /dashboard?welcome=true),
+      // we don't need to validate state or code - the backend has already processed everything
+      if (this.isSuccessfulOAuth2Redirect(callbackUrl)) {
+        console.log('🔍 OAuth2Service: Detecting successful OAuth2 redirect...');
+        
+        const sessionValidation = await this.validatePostCallbackSession();
+        
+        if (!sessionValidation.success) {
+          console.error('❌ OAuth2Service: Session validation failed after successful redirect');
+          return {
+            success: false,
+            error: 'Failed to establish session after Google login'
+          };
+        }
+
+        // Clear OAuth2 state
+        this.clearOAuth2State();
+
+        console.log('✅ OAuth2Service: OAuth2 redirect handled successfully');
+        
         return {
-          success: false,
-          error: 'Invalid OAuth2 state. Please try logging in again.'
+          success: true,
+          user: sessionValidation.user,
+          requiresRedirect: '/dashboard'
         };
       }
 
-      // Check if we have authorization code
-      if (!urlParams.code) {
-        console.error('❌ OAuth2Service: No authorization code in callback');
+      // Handle traditional callback with code and state parameters
+      if (urlParams.code && urlParams.state) {
+        console.log('🔍 OAuth2Service: Processing traditional OAuth2 callback...');
+        
+        // Validate state parameter
+        const stateValidation = this.validateState(urlParams.state);
+        if (!stateValidation.isValid) {
+          console.error('❌ OAuth2Service: State validation failed:', stateValidation.error);
+          return {
+            success: false,
+            error: 'Invalid OAuth2 state. Please try logging in again.'
+          };
+        }
+
+        // The backend should have already processed the callback and created a session
+        const sessionValidation = await this.validatePostCallbackSession();
+        
+        if (!sessionValidation.success) {
+          console.error('❌ OAuth2Service: Session validation failed after callback');
+          return {
+            success: false,
+            error: 'Failed to create session after Google login'
+          };
+        }
+
+        // Get redirect URL from stored state
+        const storedState = this.getCurrentState();
+        const redirectUrl = storedState?.redirectUrl || '/dashboard';
+
+        // Clear OAuth2 state
+        this.clearOAuth2State();
+
+        console.log('✅ OAuth2Service: OAuth2 callback handled successfully');
+        
         return {
-          success: false,
-          error: 'No authorization code received from Google'
+          success: true,
+          user: sessionValidation.user,
+          requiresRedirect: redirectUrl
         };
       }
 
-      // CRITICAL FIX: The Spring Auth Server should have already processed the callback
-      // and created a session. We just need to validate that the session exists.
-      console.log('🔍 OAuth2Service: Validating post-callback session...');
-      
-      const sessionValidation = await this.validatePostCallbackSession();
-      
-      if (!sessionValidation.success) {
-        console.error('❌ OAuth2Service: Session validation failed after callback');
-        return {
-          success: false,
-          error: 'Failed to create session after Google login'
-        };
-      }
-
-      // Get redirect URL from stored state
-      const storedState = this.getCurrentState();
-      const redirectUrl = storedState?.redirectUrl || '/dashboard';
-
-      // Clear OAuth2 state
-      this.clearOAuth2State();
-
-      console.log('✅ OAuth2Service: OAuth2 callback handled successfully');
-      
+      // If we reach here, it's not a valid OAuth2 callback
+      console.warn('⚠️ OAuth2Service: URL does not appear to be a valid OAuth2 callback');
       return {
-        success: true,
-        user: sessionValidation.user,
-        requiresRedirect: redirectUrl
+        success: false,
+        error: 'Invalid OAuth2 callback URL'
       };
 
     } catch (error) {
@@ -166,38 +192,144 @@ export class OAuth2Service {
   /**
    * Check if current URL is OAuth2 callback - FIXED DETECTION
    */
-  // REPLACE THIS METHOD:
-isOAuth2Callback(url: string = window.location.href): boolean {
-  try {
-    console.log('🔍 OAuth2Service: Checking if URL is OAuth2 callback:', url);
-    
-    const urlObj = new URL(url);
-    const hasCode = urlObj.searchParams.has('code');
-    const hasState = urlObj.searchParams.has('state');
-    
-    // More specific callback detection
-    const isCallbackPath = urlObj.pathname === '/auth/callback';
-    const hasOAuth2Params = hasCode && hasState;
-    
-    // Only consider it a callback if:
-    // 1. It's the specific callback path, OR
-    // 2. It has both required OAuth2 parameters
-    const isOAuth2 = isCallbackPath || hasOAuth2Params;
-    
-    console.log('🔍 OAuth2 callback detection:', {
-      hasCode,
-      hasState,
-      isCallbackPath,
-      isOAuth2,
-      pathname: urlObj.pathname
-    });
-    
-    return isOAuth2;
-  } catch (error) {
-    console.error('❌ OAuth2Service: Error checking callback URL:', error);
-    return false;
+  isOAuth2Callback(url: string = window.location.href): boolean {
+    try {
+      console.log('🔍 OAuth2Service: Checking if URL is OAuth2 callback:', url);
+      
+      const urlObj = new URL(url);
+      
+      // Method 1: Traditional OAuth2 callback with code and state
+      const hasCode = urlObj.searchParams.has('code');
+      const hasState = urlObj.searchParams.has('state');
+      const hasTraditionalParams = hasCode && hasState;
+      
+      // Method 2: OAuth2 error parameters
+      const hasOAuth2Error = urlObj.searchParams.has('error') || urlObj.searchParams.has('oauth2_error');
+      
+      // Method 3: Specific callback path
+      const isCallbackPath = urlObj.pathname === '/auth/callback';
+      
+      // Method 4: FIXED - Check if we have stored OAuth2 state AND this looks like a success redirect
+      const hasStoredState = this.hasStoredOAuth2State();
+      const isSuccessfulRedirect = hasStoredState && this.isSuccessfulOAuth2Redirect(url);
+      
+      const isOAuth2 = hasTraditionalParams || hasOAuth2Error || isCallbackPath || isSuccessfulRedirect;
+      
+      console.log('🔍 OAuth2 callback detection:', {
+        hasCode,
+        hasState,
+        hasTraditionalParams,
+        hasOAuth2Error,
+        hasStoredState,
+        isSuccessfulRedirect,
+        isCallbackPath,
+        isOAuth2,
+        pathname: urlObj.pathname,
+        searchParams: Object.fromEntries(urlObj.searchParams.entries())
+      });
+      
+      return isOAuth2;
+    } catch (error) {
+      console.error('❌ OAuth2Service: Error checking callback URL:', error);
+      return false;
+    }
   }
-}
+
+  /**
+   * Check if URL is a successful OAuth2 redirect - FIXED LOGIC
+   */
+  private isSuccessfulOAuth2Redirect(url: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      
+      // CRITICAL: Don't treat error URLs as successful redirects
+      if (urlObj.searchParams.has('oauth2_error') || urlObj.searchParams.has('error')) {
+        console.log('🔍 OAuth2 redirect check: Error parameter found, not a successful redirect');
+        return false;
+      }
+      
+      // Check for patterns that indicate successful OAuth2 completion
+      const hasWelcomeParam = urlObj.searchParams.has('welcome');
+      const hasSuccessParam = urlObj.searchParams.has('success');
+      const hasOAuth2SuccessParam = urlObj.searchParams.has('oauth2_success');
+      
+      // Check if redirected to protected routes that would only be accessible after login
+      const isProtectedRoute = urlObj.pathname.startsWith('/dashboard');
+      
+      // FIXED: Only consider it a successful redirect if we have OAuth2 state AND either:
+      // 1. We have explicit success parameters, OR
+      // 2. We're on a protected route (like /dashboard?welcome=true)
+      const isSuccessfulRedirect = hasWelcomeParam || 
+                                  hasSuccessParam || 
+                                  hasOAuth2SuccessParam ||
+                                  isProtectedRoute; // Removed the hasStoredState requirement here
+      
+      console.log('🔍 OAuth2 successful redirect detection:', {
+        hasWelcomeParam,
+        hasSuccessParam,
+        hasOAuth2SuccessParam,
+        isProtectedRoute,
+        isSuccessfulRedirect,
+        pathname: urlObj.pathname
+      });
+      
+      return isSuccessfulRedirect;
+    } catch (error) {
+      console.error('❌ OAuth2Service: Error checking successful redirect:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if we have stored OAuth2 state - WITH VALIDATION
+   */
+  private hasStoredOAuth2State(): boolean {
+    try {
+      const stored = sessionStorage.getItem('oauth2_state');
+      if (!stored) {
+        return false;
+      }
+      
+      // Validate the stored state
+      const parsedState = JSON.parse(stored);
+      const hasValidState = parsedState && 
+                           parsedState.state && 
+                           parsedState.provider === 'google';
+      
+      // EXTENDED: Check if state is not too old (max 15 minutes for OAuth2 flow)
+      const stateAge = Date.now() - (parsedState.timestamp || 0);
+      const maxAge = 15 * 60 * 1000; // 15 minutes
+      
+      if (stateAge > maxAge) {
+        console.log('🧹 OAuth2Service: Stored state is too old, clearing');
+        this.clearOAuth2State();
+        return false;
+      }
+      
+      return hasValidState;
+    } catch (error) {
+      console.warn('⚠️ OAuth2Service: Error checking stored state:', error);
+      this.clearOAuth2State(); // Clear invalid state
+      return false;
+    }
+  }
+
+  /**
+   * Enhanced OAuth2 state storage with timestamp
+   */
+  private storeOAuth2State(state: OAuth2State): void {
+    try {
+      const stateWithTimestamp = {
+        ...state,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem('oauth2_state', JSON.stringify(stateWithTimestamp));
+      this.currentState = state;
+      console.log('💾 OAuth2Service: State stored successfully with timestamp');
+    } catch (error) {
+      console.warn('⚠️ OAuth2Service: Failed to store OAuth2 state:', error);
+    }
+  }
 
   /**
    * Get current OAuth2 state
@@ -227,14 +359,40 @@ isOAuth2Callback(url: string = window.location.href): boolean {
   }
 
   /**
-   * Clear OAuth2 state
+   * Clear OAuth2 state - ENHANCED
    */
   clearOAuth2State(): void {
     this.currentState = null;
     try {
       sessionStorage.removeItem('oauth2_state');
+      sessionStorage.removeItem('oauth2_processed'); // Also clear processing flag
+      console.log('🧹 OAuth2Service: OAuth2 state cleared');
     } catch (error) {
       console.warn('⚠️ OAuth2Service: Failed to clear state from sessionStorage:', error);
+    }
+  }
+
+  /**
+   * Clean up stale OAuth2 data on service initialization
+   */
+  private cleanupStaleData(): void {
+    try {
+      // Check for stale oauth2_processed flag
+      const processed = sessionStorage.getItem('oauth2_processed');
+      if (processed === 'true') {
+        // If it's been more than 5 minutes, clear it
+        const processingAge = Date.now() - (parseInt(sessionStorage.getItem('oauth2_processed_time') || '0') || Date.now());
+        if (processingAge > 5 * 60 * 1000) {
+          sessionStorage.removeItem('oauth2_processed');
+          sessionStorage.removeItem('oauth2_processed_time');
+        }
+      }
+      
+      // Check for stale OAuth2 state
+      this.hasStoredOAuth2State(); // This will clean up stale state automatically
+      
+    } catch (error) {
+      console.warn('⚠️ OAuth2Service: Error during cleanup:', error);
     }
   }
 
@@ -292,6 +450,7 @@ isOAuth2Callback(url: string = window.location.href): boolean {
 
   /**
    * Validate session after OAuth2 callback
+   * ENHANCED: Now properly handles HttpOnly cookies from backend
    */
   private async validatePostCallbackSession(): Promise<{ 
     success: boolean; 
@@ -301,21 +460,37 @@ isOAuth2Callback(url: string = window.location.href): boolean {
     try {
       console.log('🔍 OAuth2Service: Validating session after callback...');
       
-      // Check if session was created by validating with auth server
+      // Since the backend creates HttpOnly cookies after successful OAuth2,
+      // we can validate the session by calling the session validation endpoint
       const response = await this.authApiClient.validateSession();
       
       if (response.success && response.data?.valid && response.data.user) {
-        console.log('✅ OAuth2Service: Session validation successful');
+        console.log('✅ OAuth2Service: Session validation successful, user:', response.data.user.email);
         return {
           success: true,
           user: response.data.user
         };
       }
 
-      console.warn('⚠️ OAuth2Service: Session validation failed or no user data');
+      // If validation fails, wait a moment and try once more
+      // (sometimes there's a small delay for cookie propagation)
+      console.log('⏳ OAuth2Service: Session validation failed, retrying in 1000ms...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const retryResponse = await this.authApiClient.validateSession();
+      
+      if (retryResponse.success && retryResponse.data?.valid && retryResponse.data.user) {
+        console.log('✅ OAuth2Service: Session validation successful on retry, user:', retryResponse.data.user.email);
+        return {
+          success: true,
+          user: retryResponse.data.user
+        };
+      }
+
+      console.warn('⚠️ OAuth2Service: Session validation failed after retry');
       return {
         success: false,
-        error: 'Session validation failed'
+        error: 'Session validation failed - no valid session found'
       };
 
     } catch (error) {
