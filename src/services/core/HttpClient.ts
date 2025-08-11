@@ -1,5 +1,8 @@
 // src/services/core/HttpClient.ts
 
+import { csrfService } from './CSRFService';
+import { logger } from '../../utils/logger';
+
 export interface HttpClientConfig {
   baseUrl: string;
   timeout?: number;

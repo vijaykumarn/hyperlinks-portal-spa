@@ -18,6 +18,7 @@ import type {
   OAuth2AuthUrlResponse,
   UserData
 } from './types';
+import { API_CONFIG } from '../../config/constants';
 
 /**
  * Auth Server API Client

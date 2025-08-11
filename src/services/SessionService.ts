@@ -2,6 +2,8 @@
 
 import { StateManager } from '../core/state/StateManager';
 import type { UserData, ApiResponse } from '../types/app';
+import { API_CONFIG, STORAGE_KEYS } from '../config/constants';
+import type { AppUser } from '../types/unified';
 
 /**
  * Session management service - HttpOnly cookies with OAuth2 support

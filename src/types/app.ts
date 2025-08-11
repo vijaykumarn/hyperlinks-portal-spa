@@ -1,6 +1,10 @@
 // src/types/app.ts
 
 import type { RouteContext } from './router';
+import type { AppUser, BackendApiResponse, AppError } from './unified';
+
+export type UserData = AppUser;
+export type ApiResponse<T = any> = BackendApiResponse<T>;
 
 /**
  * Application configuration
@@ -10,17 +14,6 @@ export interface AppConfig {
   environment: 'development' | 'production' | 'test';
   enableAnalytics: boolean;
   enableLogging: boolean;
-}
-
-/**
- * User data structure
- */
-export interface UserData {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  createdAt: number;
 }
 
 /**
@@ -68,12 +61,13 @@ export interface AppLifecycle {
 }
 
 /**
- * Session data structure
+ * Enhanced session data with readonly properties
  */
 export interface SessionData {
-  user: UserData;
-  token: string;
-  expiresAt: number;
+  readonly user: AppUser;
+  readonly sessionId: string;
+  readonly expiresAt: number;
+  readonly source: 'credentials' | 'oauth2';
 }
 
 /**
@@ -138,14 +132,4 @@ export interface DOMManager {
   isInViewport(element: HTMLElement): boolean;
   debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void;
   throttle<T extends (...args: any[]) => any>(func: T, limit: number): (...args: Parameters<T>) => void;
-}
-
-/**
- * API Response interface
- */
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
 }

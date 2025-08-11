@@ -3,6 +3,8 @@
 /**
  * Registration request DTO matching backend
  */
+import type { AppUser, AppError } from '../../types/unified';
+
 export interface RegistrationRequest {
   username: string;
   email: string;
@@ -32,19 +34,7 @@ export interface LoginRequest {
   rememberMe?: boolean;
 }
 
-/**
- * User data structure for auth service
- */
-export interface UserData {
-  id: string;
-  username: string;
-  email: string;
-  organisation?: string;
-  emailVerified: boolean;
-  role: string;
-  createdAt: number;
-  lastLoginAt?: number;
-}
+export type UserData = AppUser;
 
 /**
  * Login response from backend
@@ -197,12 +187,7 @@ export type AuthEvent =
 /**
  * Auth service error types
  */
-export interface AuthError {
-  type: 'validation' | 'network' | 'server' | 'authentication' | 'verification';
-  message: string;
-  details?: any;
-  field?: string; // For validation errors
-}
+export type AuthError = AppError;
 
 // Export the AuthModalMode type that was missing
 export type AuthModalMode = 'login' | 'register' | 'verification' | 'closed';
