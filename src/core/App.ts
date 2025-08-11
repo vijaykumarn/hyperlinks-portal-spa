@@ -1,4 +1,4 @@
-// src/core/App.ts - FINAL FIXED VERSION
+// src/core/App.ts - ENHANCED OAUTH2 SESSION HANDLING
 
 import type { AppConfig, AppLifecycle, AppState } from '../types/app';
 import type { Router } from './router/Router';
@@ -6,6 +6,7 @@ import { createRouter, setPageManager } from './router';
 import { DOMManagerImpl } from './dom/DOMManager';
 import { PageManager } from '../pages/PageManager';
 import { SessionService } from '../services/SessionService';
+import { AuthService } from '../services/auth/AuthService';
 
 /**
  * Main application class that bootstraps and manages the entire URL shortener SPA
@@ -18,6 +19,7 @@ export class App implements AppLifecycle {
   private state: AppState;
   private eventListeners: Array<() => void> = [];
   private sessionService: SessionService;
+  private authService: AuthService;
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -43,10 +45,11 @@ export class App implements AppLifecycle {
     this.handleUnhandledRejection = this.handleUnhandledRejection.bind(this);
 
     this.sessionService = SessionService.getInstance();
+    this.authService = AuthService.getInstance();
   }
 
   /**
-   * Initialize and start the application
+   * Initialize and start the application - ENHANCED FOR OAUTH2
    */
   public async init(): Promise<void> {
     try {
@@ -71,8 +74,11 @@ export class App implements AppLifecycle {
       // Register pages
       this.registerPages();
 
-      // Initialize session state
-      this.initializeSession();
+      // ENHANCED: Initialize session state with OAuth2 support
+      await this.initializeSessionState();
+
+      // Setup auth event listeners
+      this.setupAuthEventListeners();
 
       // Preload critical pages
       await this.preloadCriticalPages();
@@ -95,6 +101,111 @@ export class App implements AppLifecycle {
       this.handleError(error as Error);
       throw error;
     }
+  }
+
+  /**
+   * Initialize session state with OAuth2 support
+   */
+  private async initializeSessionState(): Promise<void> {
+    try {
+      console.log('🔐 App: Initializing session state...');
+      
+      // Check for OAuth2 processing flag
+      const oauth2Processed = sessionStorage.getItem('oauth2_processed');
+      
+      if (oauth2Processed === 'true') {
+        console.log('🔄 App: OAuth2 was processed, validating session...');
+        
+        // Auto-validate session after OAuth2
+        const validation = await this.authService.autoValidateSession();
+        
+        if (validation.isValid && validation.user) {
+          console.log('✅ App: OAuth2 session validated successfully for:', validation.user.email);
+          
+          // Check if we should redirect
+          if (validation.shouldRedirect && window.location.pathname !== validation.shouldRedirect) {
+            console.log('🎯 App: Redirecting after OAuth2 session validation to:', validation.shouldRedirect);
+            // Use setTimeout to ensure router is initialized
+            setTimeout(() => {
+              this.router.replace(validation.shouldRedirect!);
+            }, 100);
+          }
+        } else {
+          console.warn('⚠️ App: OAuth2 session validation failed');
+        }
+        
+        // Clear the flag
+        sessionStorage.removeItem('oauth2_processed');
+        
+      } else {
+        // Normal session initialization
+        const hasPersistedSession = this.sessionService.loadPersistedSession();
+        
+        if (hasPersistedSession) {
+          console.log('🔄 App: Loaded persisted session');
+          
+          // Validate the persisted session
+          const validation = await this.authService.validateSession();
+          
+          if (validation.valid && validation.user) {
+            console.log('✅ App: Persisted session validated successfully');
+          } else {
+            console.warn('⚠️ App: Persisted session validation failed, clearing session');
+            this.sessionService.clearSession();
+          }
+        } else {
+          console.log('ℹ️ App: No persisted session found');
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ App: Error initializing session state:', error);
+      // Clear any invalid session data
+      this.sessionService.clearSession();
+    }
+  }
+
+  /**
+   * Setup authentication event listeners
+   */
+  private setupAuthEventListeners(): void {
+    // Listen for successful authentication
+    const loginSuccessListener = this.authService.addEventListener('login:success', (data) => {
+      console.log('👤 App: User logged in:', data.user.email);
+      // Update app state
+      this.state.session = { 
+        user: data.user, 
+        token: '', 
+        expiresAt: Date.now() + (24 * 60 * 60 * 1000) 
+      };
+    });
+    this.eventListeners.push(loginSuccessListener);
+
+    // Listen for OAuth2 success
+    const oauth2SuccessListener = this.authService.addEventListener('oauth2:success', (data) => {
+      console.log('🔗 App: OAuth2 login successful:', data.user.email);
+      // Update app state
+      this.state.session = { 
+        user: data.user, 
+        token: '', 
+        expiresAt: Date.now() + (24 * 60 * 60 * 1000) 
+      };
+    });
+    this.eventListeners.push(oauth2SuccessListener);
+
+    // Listen for session expiration
+    const sessionExpiredListener = this.authService.addEventListener('session:expired', () => {
+      console.log('⏰ App: Session expired');
+      this.state.session = null;
+    });
+    this.eventListeners.push(sessionExpiredListener);
+
+    // Listen for logout
+    const logoutListener = this.authService.addEventListener('logout:success', () => {
+      console.log('🚪 App: User logged out');
+      this.state.session = null;
+    });
+    this.eventListeners.push(logoutListener);
   }
 
   /**
@@ -129,6 +240,13 @@ export class App implements AppLifecycle {
       () => {
         console.log('Connection restored');
         this.domManager.removeClass('offline');
+        
+        // Validate session when connection is restored
+        if (this.authService.isAuthenticated()) {
+          this.authService.validateSession().catch(error => {
+            console.warn('Session validation failed after connection restored:', error);
+          });
+        }
       }
     );
     this.eventListeners.push(onlineListener);
@@ -227,22 +345,16 @@ export class App implements AppLifecycle {
   }
 
   /**
-   * Initialize session state
-   */
-  private initializeSession(): void {
-    // Load persisted session if available
-    this.sessionService.loadPersistedSession();
-  }
-
-  /**
-   * Preload critical pages for better performance
+   * Preload critical pages for better performance - ENHANCED
    */
   private async preloadCriticalPages(): Promise<void> {
     if (this.config.environment === 'production') {
       // Preload based on authentication status
       if (this.sessionService.isAuthenticated()) {
+        console.log('🔄 App: Preloading authenticated user pages...');
         await this.pageManager.preloadPages(['dashboard', 'urls']);
       } else {
+        console.log('🔄 App: Preloading public pages...');
         await this.pageManager.preloadPages(['home']);
       }
     }
@@ -314,6 +426,20 @@ export class App implements AppLifecycle {
   }
 
   /**
+   * Get session service instance
+   */
+  public getSessionService(): SessionService {
+    return this.sessionService;
+  }
+
+  /**
+   * Get auth service instance
+   */
+  public getAuthService(): AuthService {
+    return this.authService;
+  }
+
+  /**
    * Lifecycle hooks
    */
   public async beforeMount(): Promise<void> {
@@ -356,6 +482,9 @@ export class App implements AppLifecycle {
 
       // Destroy page manager
       await this.pageManager.destroy();
+
+      // Clear session
+      this.sessionService.clearSession();
 
       // Clear state
       this.state.isInitialized = false;

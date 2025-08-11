@@ -13,7 +13,7 @@ import type {
   PasswordStrength
 } from './types';
 import type { UserData } from '../../types/app'; // App's UserData type
-// REMOVED: Unused ApiResponse import
+import { SessionService } from '../SessionService';
 
 /**
  * Main Authentication Service
@@ -25,11 +25,13 @@ export class AuthService {
   private authApiClient: AuthApiClient;
   private oauth2Service: OAuth2Service;
   private eventListeners: Map<AuthEvent, Array<(data?: any) => void>> = new Map();
+  private sessionService: SessionService;
 
   private constructor() {
     this.stateManager = StateManager.getInstance();
     this.authApiClient = new AuthApiClient();
     this.oauth2Service = OAuth2Service.getInstance();
+    this.sessionService = SessionService.getInstance(); 
     
     this.setupAuthStateListener();
   }
@@ -370,7 +372,7 @@ export class AuthService {
   }
 
   /**
-   * Handle OAuth2 callback
+   * Handle OAuth2 callback - ENHANCED VERSION
    */
   async handleOAuth2Callback(callbackUrl: string): Promise<{
     success: boolean;
@@ -391,12 +393,14 @@ export class AuthService {
         };
       }
 
-      // Set authenticated user if login was successful
+      // ENHANCED: Properly establish session if user data is available
       if (result.user) {
         const appUser = this.mapAuthUserToAppUser(result.user);
         this.setAuthenticatedUser(appUser);
         this.emitEvent('oauth2:success', { user: appUser });
         this.emitEvent('login:success', { user: appUser });
+
+        console.log('✅ AuthService: OAuth2 successful and session established for:', appUser.email);
 
         return {
           success: true,
@@ -405,6 +409,26 @@ export class AuthService {
         };
       }
 
+      // If no user data but success, try to validate session
+      console.log('🔍 AuthService: No user data in OAuth2 result, validating session...');
+      
+      const sessionValidation = await this.validateSession();
+      
+      if (sessionValidation.valid && sessionValidation.user) {
+        console.log('✅ AuthService: Session validation successful after OAuth2 callback');
+        this.emitEvent('oauth2:success', { user: sessionValidation.user });
+        this.emitEvent('login:success', { user: sessionValidation.user });
+        
+        return {
+          success: true,
+          user: sessionValidation.user,
+          redirectTo: result.requiresRedirect || '/dashboard'
+        };
+      }
+
+      // If we reach here, OAuth2 succeeded but no session was established
+      console.warn('⚠️ AuthService: OAuth2 callback succeeded but no session established');
+      
       return {
         success: true,
         redirectTo: result.requiresRedirect || '/dashboard'
@@ -420,7 +444,6 @@ export class AuthService {
       };
     }
   }
-
   // =====================================
   // LOGOUT METHODS
   // =====================================
@@ -600,7 +623,11 @@ export class AuthService {
 
       if (!response.success || !response.data) {
         console.warn('⚠️ AuthService: Session validation failed:', response.error);
-        this.handleSessionExpired();
+        
+        // Only clear session if we currently think we're authenticated
+        if (this.isAuthenticated()) {
+          this.handleSessionExpired();
+        }
         
         return {
           valid: false,
@@ -613,20 +640,36 @@ export class AuthService {
       if (valid && user) {
         // Update user data if session is valid
         const appUser = this.mapAuthUserToAppUser(user);
-        this.setAuthenticatedUser(appUser);
+        
+        // Only update if we don't already have this user or user data changed
+        const currentUser = this.getCurrentUser();
+        if (!currentUser || currentUser.id !== appUser.id || currentUser.email !== appUser.email) {
+          console.log('🔄 AuthService: Updating user data from session validation');
+          this.setAuthenticatedUser(appUser);
+        }
+        
         return {
           valid: true,
           user: appUser
         };
       } else {
-        console.warn('⚠️ AuthService: Session invalid');
-        this.handleSessionExpired();
+        console.warn('⚠️ AuthService: Session invalid or no user data');
+        
+        // Only clear session if we currently think we're authenticated
+        if (this.isAuthenticated()) {
+          this.handleSessionExpired();
+        }
+        
         return { valid: false };
       }
 
     } catch (error) {
       console.error('❌ AuthService: Session validation error:', error);
-      this.handleSessionExpired();
+      
+      // Only clear session if we currently think we're authenticated
+      if (this.isAuthenticated()) {
+        this.handleSessionExpired();
+      }
       
       return {
         valid: false,
@@ -713,8 +756,14 @@ export class AuthService {
    */
   private handleSessionExpired(): void {
     console.log('⏰ AuthService: Session expired');
+    
+    const wasAuthenticated = this.isAuthenticated();
     this.clearAuthState();
-    this.emitEvent('session:expired', {});
+    
+    // Only emit session expired event if user was previously authenticated
+    if (wasAuthenticated) {
+      this.emitEvent('session:expired', {});
+    }
   }
 
   // =====================================
@@ -840,12 +889,25 @@ export class AuthService {
   /**
    * Set authenticated user
    */
+/**
+   * Enhanced session establishment for OAuth2 flows
+   */
   private setAuthenticatedUser(user: UserData): void {
+    console.log('👤 AuthService: Setting authenticated user:', user.email);
+    
     this.stateManager.dispatch({
       type: 'SESSION_SET',
       payload: { user, isAuthenticated: true }
     });
+    
     this.clearAuthError();
+    this.setAuthLoading(false);
+    
+    // Update registration step to complete if we were in a registration flow
+    const authState = this.stateManager.getAuthState();
+    if (authState.registrationStep !== 'complete') {
+      this.updateRegistrationStep('complete');
+    }
   }
 
   /**
@@ -1009,6 +1071,79 @@ export class AuthService {
       isLoading: authState.isLoading,
       error: authState.error
     };
+  }
+
+  /**
+   * Auto-validate session on app startup - NEW METHOD
+   */
+  async autoValidateSession(): Promise<{ 
+    isValid: boolean; 
+    user?: UserData; 
+    shouldRedirect?: string;
+  }> {
+    try {
+      console.log('🔍 AuthService: Auto-validating session on startup...');
+      
+      // Check if we have any stored session data first
+      const hasStoredSession = this.sessionService.loadPersistedSession();
+      
+      if (!hasStoredSession) {
+        console.log('ℹ️ AuthService: No stored session found');
+        return { isValid: false };
+      }
+      
+      // Validate the session with the server
+      const validation = await this.validateSession();
+      
+      if (validation.valid && validation.user) {
+        console.log('✅ AuthService: Auto-validation successful for user:', validation.user.email);
+        
+        // Check if user is on a public page and should be redirected
+        const currentPath = window.location.pathname;
+        if (currentPath === '/' || currentPath === '/home') {
+          return {
+            isValid: true,
+            user: validation.user,
+            shouldRedirect: '/dashboard'
+          };
+        }
+        
+        return {
+          isValid: true,
+          user: validation.user
+        };
+      } else {
+        console.log('⚠️ AuthService: Auto-validation failed, clearing stored session');
+        this.sessionService.clearSession();
+        
+        return { isValid: false };
+      }
+      
+    } catch (error) {
+      console.error('❌ AuthService: Auto-validation error:', error);
+      this.sessionService.clearSession();
+      
+      return { isValid: false };
+    }
+  }
+
+    /**
+   * Handle successful authentication (login/registration/oauth2)
+   */
+  private handleAuthSuccess(user: UserData, source: 'login' | 'registration' | 'oauth2'): void {
+    console.log(`✅ AuthService: ${source} successful for user:`, user.email);
+    
+    this.setAuthenticatedUser(user);
+    
+    // Emit appropriate events
+    if (source === 'oauth2') {
+      this.emitEvent('oauth2:success', { user });
+    }
+    
+    this.emitEvent('login:success', { user });
+    
+    // Clear any OAuth2 state
+    this.oauth2Service.clearOAuth2State();
   }
 
   /**
