@@ -1,5 +1,3 @@
-// src/services/core/ApiConfig.ts
-
 export interface AuthServerConfig {
   baseUrl: string;
   endpoints: {
@@ -32,6 +30,7 @@ export interface SessionConfig {
     all: string;
     invalidateAll: string;
     validate: string;
+    check: string; // NEW ENDPOINT
   };
 }
 
@@ -104,7 +103,8 @@ export class ApiConfig {
           info: '/api/session/info',
           all: '/api/session/all',
           invalidateAll: '/api/session/invalidate-all',
-          validate: '/api/session/validate'
+          validate: '/api/session/validate',
+          check: '/api/session/check' // NEW ENDPOINT
         }
       },
       oauth2: {

@@ -107,43 +107,53 @@ export class App implements AppLifecycle {
    * Initialize session state with OAuth2 support
    */
   private async initializeSessionState(): Promise<void> {
-    try {
-      console.log('🔐 App: Initializing session state...');
+  try {
+    console.log('🔐 App: Initializing session state...');
+    
+    // Check for OAuth2 processing flag
+    const oauth2Processed = sessionStorage.getItem('oauth2_processed');
+    
+    if (oauth2Processed === 'true') {
+      console.log('🔄 App: OAuth2 was processed, validating session...');
       
-      // Check for OAuth2 processing flag
-      const oauth2Processed = sessionStorage.getItem('oauth2_processed');
+      // Auto-validate session after OAuth2
+      const validation = await this.authService.autoValidateSession();
       
-      if (oauth2Processed === 'true') {
-        console.log('🔄 App: OAuth2 was processed, validating session...');
+      if (validation.isValid && validation.user) {
+        console.log('✅ App: OAuth2 session validated successfully for:', validation.user.email);
         
-        // Auto-validate session after OAuth2
-        const validation = await this.authService.autoValidateSession();
-        
-        if (validation.isValid && validation.user) {
-          console.log('✅ App: OAuth2 session validated successfully for:', validation.user.email);
-          
-          // Check if we should redirect
-          if (validation.shouldRedirect && window.location.pathname !== validation.shouldRedirect) {
-            console.log('🎯 App: Redirecting after OAuth2 session validation to:', validation.shouldRedirect);
-            // Use setTimeout to ensure router is initialized
-            setTimeout(() => {
-              this.router.replace(validation.shouldRedirect!);
-            }, 100);
-          }
-        } else {
-          console.warn('⚠️ App: OAuth2 session validation failed');
+        // Check if we should redirect
+        if (validation.shouldRedirect && window.location.pathname !== validation.shouldRedirect) {
+          console.log('🎯 App: Redirecting after OAuth2 session validation to:', validation.shouldRedirect);
+          // Use setTimeout to ensure router is initialized
+          setTimeout(() => {
+            this.router.replace(validation.shouldRedirect!);
+          }, 100);
         }
-        
-        // Clear the flag
-        sessionStorage.removeItem('oauth2_processed');
-        
       } else {
-        // Normal session initialization
-        const hasPersistedSession = this.sessionService.loadPersistedSession();
+        console.warn('⚠️ App: OAuth2 session validation failed');
+      }
+      
+      // Clear the flag
+      sessionStorage.removeItem('oauth2_processed');
+      
+    } else {
+      // Normal session initialization
+      const hasPersistedSession = this.sessionService.loadPersistedSession();
+      
+      if (hasPersistedSession) {
+        console.log('🔄 App: Loaded persisted session');
         
-        if (hasPersistedSession) {
-          console.log('🔄 App: Loaded persisted session');
-          
+        // FIXED: Check if session was just established by OAuth2
+        const sessionInfo = this.sessionService.getSessionInfo();
+        const isRecentOAuth2Session = sessionInfo.source === 'oauth2' && 
+                                     sessionInfo.ageMinutes !== undefined && 
+                                     sessionInfo.ageMinutes < 2; // Less than 2 minutes old
+        
+        if (isRecentOAuth2Session) {
+          console.log('🔄 App: Skipping validation for recent OAuth2 session');
+          // Don't validate - OAuth2 just established this session
+        } else {
           // Validate the persisted session
           const validation = await this.authService.validateSession();
           
@@ -153,17 +163,18 @@ export class App implements AppLifecycle {
             console.warn('⚠️ App: Persisted session validation failed, clearing session');
             this.sessionService.clearSession();
           }
-        } else {
-          console.log('ℹ️ App: No persisted session found');
         }
+      } else {
+        console.log('ℹ️ App: No persisted session found');
       }
-      
-    } catch (error) {
-      console.error('❌ App: Error initializing session state:', error);
-      // Clear any invalid session data
-      this.sessionService.clearSession();
     }
+    
+  } catch (error) {
+    console.error('❌ App: Error initializing session state:', error);
+    // Clear any invalid session data
+    this.sessionService.clearSession();
   }
+}
 
   /**
    * Setup authentication event listeners

@@ -72,6 +72,17 @@ export const authGuard: RouteGuard = async (context) => {
   if (context.path.startsWith('/dashboard')) {
     console.log('🔍 AuthGuard: Validating session for protected route...');
     
+    // FIXED: Skip validation for recent OAuth2 sessions
+    const sessionInfo = sessionService.getSessionInfo();
+    const isRecentOAuth2Session = sessionInfo.source === 'oauth2' && 
+                                 sessionInfo.ageMinutes !== undefined && 
+                                 sessionInfo.ageMinutes < 5; // Less than 5 minutes old
+    
+    if (isRecentOAuth2Session) {
+      console.log('✅ AuthGuard: Skipping validation for recent OAuth2 session');
+      return true;
+    }
+    
     try {
       const validation = await authService.validateSession();
       

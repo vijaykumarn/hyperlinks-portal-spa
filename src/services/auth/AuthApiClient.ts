@@ -195,14 +195,45 @@ export class AuthApiClient extends HttpClient {
   }
 
   /**
-   * Validate current session
+   * Validate current session - FIXED TO MATCH BACKEND RESPONSE FORMAT
    */
-  async validateSession(): Promise<ApiResponse<{ valid: boolean; user?: UserData }>> {
+  async validateSession(): Promise<ApiResponse<{ 
+    authenticated: boolean; 
+    valid: boolean; 
+    userId?: string; 
+    email?: string;
+    user?: UserData; // Some endpoints might return full user object
+  }>> {
     const endpoint = this.apiConfig.getSessionConfig().endpoints.validate;
     
     console.log('✅ AuthApiClient: Validating session');
     
-    return this.get<{ valid: boolean; user?: UserData }>(endpoint);
+    // FIXED: Use GET method instead of POST for validation
+    return this.get<{ 
+      authenticated: boolean; 
+      valid: boolean; 
+      userId?: string; 
+      email?: string;
+      user?: UserData;
+    }>(endpoint);
+  }
+
+    /**
+   * Simple session check - NEW ENDPOINT
+   */
+  async checkSession(): Promise<ApiResponse<{ 
+    authenticated: boolean; 
+    sessionId?: string;
+  }>> {
+    // Add this endpoint to your API config
+    const endpoint = '/api/session/check';
+    
+    console.log('🔍 AuthApiClient: Checking session');
+    
+    return this.get<{ 
+      authenticated: boolean; 
+      sessionId?: string;
+    }>(endpoint);
   }
 
   // =====================================

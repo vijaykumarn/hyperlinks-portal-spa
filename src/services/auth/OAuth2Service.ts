@@ -1,4 +1,4 @@
-// src/services/auth/OAuth2Service.ts - FIXED OAUTH2 CALLBACK DETECTION
+// src/services/auth/OAuth2Service.ts - FIXED SESSION VALIDATION AFTER OAUTH2 CALLBACK
 
 import { ApiConfig } from '../core/ApiConfig';
 import { AuthApiClient } from './AuthApiClient';
@@ -262,7 +262,7 @@ export class OAuth2Service {
       const isSuccessfulRedirect = hasWelcomeParam || 
                                   hasSuccessParam || 
                                   hasOAuth2SuccessParam ||
-                                  isProtectedRoute; // Removed the hasStoredState requirement here
+                                  isProtectedRoute;
       
       console.log('🔍 OAuth2 successful redirect detection:', {
         hasWelcomeParam,
@@ -279,6 +279,116 @@ export class OAuth2Service {
       return false;
     }
   }
+
+  /**
+   * Validate session after OAuth2 callback - FIXED TO MATCH NEW BACKEND RESPONSE FORMAT
+   */
+  private async validatePostCallbackSession(): Promise<{ 
+    success: boolean; 
+    user?: any; 
+    error?: string; 
+  }> {
+    try {
+      console.log('🔍 OAuth2Service: Validating session after callback...');
+      
+      // Since the backend creates HttpOnly cookies after successful OAuth2,
+      // we can validate the session by calling the session validation endpoint
+      const response = await this.authApiClient.validateSession();
+      
+      // FIXED: Handle new backend response format
+      if (response.success && response.data) {
+        const { authenticated, valid, userId, email, user } = response.data;
+        
+        // FIXED: Check for authenticated AND valid flags
+        if (authenticated && valid) {
+          let userData: any = null;
+          
+          // Try to construct user object from available data
+          if (user) {
+            // Full user object returned
+            userData = user;
+          } else if (userId && email) {
+            // Basic user info returned, construct user object
+            userData = {
+              id: userId,
+              username: email.split('@')[0], // Fallback username
+              email: email,
+              emailVerified: true, // OAuth2 users are considered verified
+              role: 'USER',
+              createdAt: Date.now()
+            };
+          }
+          
+          if (userData) {
+            console.log('✅ OAuth2Service: Session validation successful, user:', userData.email);
+            return {
+              success: true,
+              user: userData
+            };
+          } else {
+            console.warn('⚠️ OAuth2Service: Session valid but no user data available');
+            return {
+              success: true
+            };
+          }
+        }
+      }
+
+      // If validation fails, wait a moment and try once more
+      // (sometimes there's a small delay for cookie propagation)
+      console.log('⏳ OAuth2Service: Session validation failed, retrying in 1000ms...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const retryResponse = await this.authApiClient.validateSession();
+      
+      // FIXED: Handle retry response with new format
+      if (retryResponse.success && retryResponse.data) {
+        const { authenticated, valid, userId, email, user } = retryResponse.data;
+        
+        if (authenticated && valid) {
+          let userData: any = null;
+          
+          if (user) {
+            userData = user;
+          } else if (userId && email) {
+            userData = {
+              id: userId,
+              username: email.split('@')[0],
+              email: email,
+              emailVerified: true,
+              role: 'USER',
+              createdAt: Date.now()
+            };
+          }
+          
+          if (userData) {
+            console.log('✅ OAuth2Service: Session validation successful on retry, user:', userData.email);
+            return {
+              success: true,
+              user: userData
+            };
+          }
+        }
+      }
+
+      console.warn('⚠️ OAuth2Service: Session validation failed after retry');
+      return {
+        success: false,
+        error: 'Session validation failed - no valid session found'
+      };
+
+    } catch (error) {
+      console.error('❌ OAuth2Service: Session validation error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Session validation error'
+      };
+    }
+  }
+
+  // =====================================
+  // PRIVATE HELPER METHODS (keep all existing ones unchanged)
+  // =====================================
 
   /**
    * Check if we have stored OAuth2 state - WITH VALIDATION
@@ -396,10 +506,6 @@ export class OAuth2Service {
     }
   }
 
-  // =====================================
-  // PRIVATE HELPER METHODS
-  // =====================================
-
   /**
    * Parse callback URL parameters
    */
@@ -446,60 +552,6 @@ export class OAuth2Service {
     }
 
     return { isValid: true };
-  }
-
-  /**
-   * Validate session after OAuth2 callback
-   * ENHANCED: Now properly handles HttpOnly cookies from backend
-   */
-  private async validatePostCallbackSession(): Promise<{ 
-    success: boolean; 
-    user?: any; 
-    error?: string; 
-  }> {
-    try {
-      console.log('🔍 OAuth2Service: Validating session after callback...');
-      
-      // Since the backend creates HttpOnly cookies after successful OAuth2,
-      // we can validate the session by calling the session validation endpoint
-      const response = await this.authApiClient.validateSession();
-      
-      if (response.success && response.data?.valid && response.data.user) {
-        console.log('✅ OAuth2Service: Session validation successful, user:', response.data.user.email);
-        return {
-          success: true,
-          user: response.data.user
-        };
-      }
-
-      // If validation fails, wait a moment and try once more
-      // (sometimes there's a small delay for cookie propagation)
-      console.log('⏳ OAuth2Service: Session validation failed, retrying in 1000ms...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const retryResponse = await this.authApiClient.validateSession();
-      
-      if (retryResponse.success && retryResponse.data?.valid && retryResponse.data.user) {
-        console.log('✅ OAuth2Service: Session validation successful on retry, user:', retryResponse.data.user.email);
-        return {
-          success: true,
-          user: retryResponse.data.user
-        };
-      }
-
-      console.warn('⚠️ OAuth2Service: Session validation failed after retry');
-      return {
-        success: false,
-        error: 'Session validation failed - no valid session found'
-      };
-
-    } catch (error) {
-      console.error('❌ OAuth2Service: Session validation error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Session validation error'
-      };
-    }
   }
 
   /**

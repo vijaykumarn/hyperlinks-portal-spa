@@ -171,46 +171,34 @@ async function handleOAuth2SuccessState(): Promise<void> {
   const oauth2Processed = sessionStorage.getItem('oauth2_processed');
   
   if (oauth2Processed === 'true') {
-    console.log('🎉 OAuth2 was successfully processed, validating session...');
+    console.log('🎉 OAuth2 was successfully processed');
     
     // Clear the flag
     sessionStorage.removeItem('oauth2_processed');
     sessionStorage.removeItem('oauth2_processed_time');
     
-    // Validate that we have a valid session
-    try {
-      const sessionValidation = await authService.validateSession();
+    // FIXED: Don't validate session again - OAuth2 callback already did this
+    // The session was already established by OAuth2Service.validatePostCallbackSession()
+    
+    // Check if user is authenticated (should be true after OAuth2)
+    if (sessionService.isAuthenticated()) {
+      const user = sessionService.getCurrentUser();
+      console.log('✅ OAuth2 session already established for user:', user?.email);
       
-      if (sessionValidation.valid && sessionValidation.user) {
-        console.log('✅ OAuth2 session validated successfully for user:', sessionValidation.user.email);
+      // Show success state briefly if we're still on a non-dashboard page
+      const currentPath = window.location.pathname;
+      if (!currentPath.startsWith('/dashboard')) {
+        showOAuth2SuccessState(user);
         
-        // Show success state briefly if we're still on a non-dashboard page
-        const currentPath = window.location.pathname;
-        if (!currentPath.startsWith('/dashboard')) {
-          showOAuth2SuccessState(sessionValidation.user);
-          
-          // Redirect to dashboard after showing success
-          setTimeout(() => {
-            window.history.replaceState({}, document.title, '/dashboard');
-            // Trigger router navigation
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }, 1500);
-        } else {
-          // Already on dashboard, just show brief success
-          showOAuth2SuccessState(sessionValidation.user);
-          setTimeout(() => {
-            // Allow normal app initialization to continue
-          }, 1000);
-        }
-        
-        return;
-      } else {
-        console.warn('⚠️ OAuth2 session validation failed after processing');
-        // Continue with normal app initialization
+        // Redirect to dashboard after showing success
+        setTimeout(() => {
+          window.history.replaceState({}, document.title, '/dashboard');
+          // Trigger router navigation
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }, 1500);
       }
-    } catch (error) {
-      console.error('❌ OAuth2 session validation error:', error);
-      // Continue with normal app initialization
+    } else {
+      console.warn('⚠️ OAuth2 was processed but no session found - this should not happen');
     }
   }
 }
