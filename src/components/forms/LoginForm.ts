@@ -171,7 +171,7 @@ export class LoginForm extends FormComponent<LoginFormProps> {
   }
 
   // EMERGENCY: Native form submission handler
-  private async handleNativeSubmit(event: Event): Promise<void> {
+  private async handleNativeSubmit(_event: Event): Promise<void> {
     console.log('📝 NATIVE form submission started');
     
     try {

@@ -302,7 +302,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
   }
 
   // EMERGENCY: Native form submission handler
-  private async handleNativeSubmit(event: Event): Promise<void> {
+  private async handleNativeSubmit(_event: Event): Promise<void> {
     console.log('📝 NATIVE registration submission started');
     
     try {

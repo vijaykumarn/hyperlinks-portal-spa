@@ -1,6 +1,7 @@
 // src/types/app.ts
 
 import type { RouteContext } from './router';
+import type { User } from '../types/user';
 
 /**
  * Application configuration
@@ -10,17 +11,6 @@ export interface AppConfig {
   environment: 'development' | 'production' | 'test';
   enableAnalytics: boolean;
   enableLogging: boolean;
-}
-
-/**
- * User data structure
- */
-export interface UserData {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  createdAt: number;
 }
 
 /**
@@ -71,7 +61,7 @@ export interface AppLifecycle {
  * Session data structure
  */
 export interface SessionData {
-  user: UserData;
+  user: User;
   token: string;
   expiresAt: number;
 }
@@ -148,4 +138,5 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+  status?: number;
 }

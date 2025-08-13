@@ -234,7 +234,7 @@ async function render404Page(context: any): Promise<void> {
 }
 
 // ADD THIS FUNCTION AFTER render404Page:
-async function handleOAuth2CallbackRoute(context: any): Promise<void> {
+async function handleOAuth2CallbackRoute(_context: any): Promise<void> {
   if (globalPageManager) {
     const domManager = globalPageManager.domManager;
     

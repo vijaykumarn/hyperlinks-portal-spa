@@ -321,7 +321,7 @@ function setupAuthEventListeners(): void {
     console.log('🔗 OAuth2 login successful:', data.user.email);
   });
 
-  authService.addEventListener('verification:success', (data) => {
+  authService.addEventListener('verification:success', (_data) => {
     console.log('✅ Verification successful');
   });
 

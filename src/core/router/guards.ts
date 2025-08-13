@@ -143,7 +143,7 @@ export const adminGuard: RouteGuard = async (_context) => {
   }
   
   const user = sessionService.getCurrentUser();
-  const hasAdminRole = user?.role === 'admin';
+  const hasAdminRole = user?.role === 'ADMIN';
   
   if (!hasAdminRole) {
     console.log('🔒 AdminGuard: User not admin, redirecting to /dashboard');
@@ -248,7 +248,7 @@ export const loggingGuard: RouteGuard = async (context) => {
  * Session validation guard - ensures session is not stale
  * ENHANCED FOR OAUTH2
  */
-export const sessionValidationGuard: RouteGuard = async (context) => {
+export const sessionValidationGuard: RouteGuard = async (_context) => {
   const sessionService = getSessionService();
   const authService = getAuthService();
   
@@ -333,7 +333,7 @@ export const maintenanceGuard: RouteGuard = async (_context) => {
 /**
  * OAuth2 callback guard - handles OAuth2 callback processing
  */
-export const oauth2CallbackGuard: RouteGuard = async (context) => {
+export const oauth2CallbackGuard: RouteGuard = async (_context) => {
   const authService = getAuthService();
   
   // Check if this is an OAuth2 callback

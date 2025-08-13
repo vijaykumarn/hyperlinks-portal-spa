@@ -1,13 +1,14 @@
 // src/core/state/types.ts - ENHANCED VERSION
 
-import type { UserData, UrlData, AnalyticsData } from '../../types/app';
+import type { UrlData, AnalyticsData } from '../../types/app';
 import type { RegistrationRequest, RegistrationStep, OAuth2State } from '../../services/auth/types';
+import type { User } from '../../types/user';
 
 /**
  * Session state (NO TOKENS - HttpOnly cookies only)
  */
 export interface SessionState {
-  user: UserData | null;
+  user: User | null;
   isAuthenticated: boolean;
   lastValidated: number;
 }
@@ -99,7 +100,7 @@ export interface AppState {
  */
 export type Action =
   // Session actions
-  | { type: 'SESSION_SET'; payload: { user: UserData; isAuthenticated: boolean } }
+  | { type: 'SESSION_SET'; payload: { user: User; isAuthenticated: boolean } }
   | { type: 'SESSION_CLEAR' }
   | { type: 'SESSION_UPDATE_TIMESTAMP' }
   

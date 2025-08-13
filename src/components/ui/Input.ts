@@ -5,7 +5,6 @@ import { type ComponentProps, Component } from "../base/Component";
 export interface InputProps extends ComponentProps {
   type?: 'text' | 'email' | 'password' | 'url' | 'number';
   placeholder?: string;
-  value?: string;
   disabled?: boolean;
   required?: boolean;
   name?: string;
@@ -148,7 +147,6 @@ export class Input extends Component<InputProps> {
     const {
       type = 'text',
       placeholder = '',
-      value = '',
       disabled = false,
       required = false,
       name = '',

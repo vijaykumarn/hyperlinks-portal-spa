@@ -1,6 +1,7 @@
 // src/services/ApiService.ts
 
-import type { ApiResponse, UserData, UrlData, AnalyticsData } from '../types/app';
+import type { ApiResponse, UrlData, AnalyticsData } from '../types/app';
+import type { User } from '../types/user';
 
 /**
  * HTTP Client for real API communication
@@ -164,7 +165,7 @@ export class ApiService {
    * Login user
    */
   public async login(email: string, password: string): Promise<ApiResponse<{
-    user: UserData;
+    user: User;
     message: string;
   }>> {
     return this.httpClient.post('/auth/login', { email, password });
@@ -180,7 +181,7 @@ export class ApiService {
   /**
    * Get current user (check authentication status)
    */
-  public async getCurrentUser(): Promise<ApiResponse<UserData>> {
+  public async getCurrentUser(): Promise<ApiResponse<User>> {
     return this.httpClient.get('/auth/me');
   }
 

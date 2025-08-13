@@ -16,8 +16,8 @@ import type {
   // REMOVED: ResendVerificationRequest - not used in this client
   SessionInfo,
   OAuth2AuthUrlResponse,
-  UserData
 } from './types';
+import type { User } from '../../types/user';
 
 /**
  * Auth Server API Client
@@ -202,7 +202,7 @@ export class AuthApiClient extends HttpClient {
     valid: boolean; 
     userId?: string; 
     email?: string;
-    user?: UserData; // Some endpoints might return full user object
+    user?: User; // Some endpoints might return full user object
   }>> {
     const endpoint = this.apiConfig.getSessionConfig().endpoints.validate;
     
@@ -214,7 +214,7 @@ export class AuthApiClient extends HttpClient {
       valid: boolean; 
       userId?: string; 
       email?: string;
-      user?: UserData;
+      user?: User;
     }>(endpoint);
   }
 

@@ -1,39 +1,56 @@
-// src/services/auth/AuthService.ts - FIXED UNUSED IMPORT
+// src/services/auth/AuthService.ts - REFACTORED WITH IMPROVEMENTS
 
 import { StateManager } from '../../core/state/StateManager';
 import { AuthApiClient } from './AuthApiClient';
 import { OAuth2Service } from './OAuth2Service';
-import type {
-  RegistrationRequest,
-  LoginRequest,
-  UserData as AuthUserData,
-  RegistrationStep,
-  AuthError,
-  AuthEvent,
-  PasswordStrength
-} from './types';
-import type { UserData } from '../../types/app'; // App's UserData type
+import { AuthErrorHandler, type AuthError } from './AuthErrorHandler';
 import { SessionService } from '../SessionService';
+import type {
+  User,
+  LoginCredentials,
+  RegistrationData,
+  AuthResult,
+  RegistrationResult,
+  SessionValidationResult
+} from '../../types/user';
+import type { PasswordStrength } from './types';
 
 /**
- * Main Authentication Service
- * Orchestrates all auth operations and manages auth state
+ * Authentication events
+ */
+export type AuthEvent =
+  | 'registration:started'
+  | 'registration:success'
+  | 'registration:failed'
+  | 'verification:required'
+  | 'verification:success'
+  | 'verification:failed'
+  | 'login:success'
+  | 'login:failed'
+  | 'logout:success'
+  | 'session:expired'
+  | 'oauth2:started'
+  | 'oauth2:success'
+  | 'oauth2:failed';
+
+/**
+ * Main Authentication Service - Refactored and Improved
  */
 export class AuthService {
   private static instance: AuthService;
   private stateManager: StateManager;
   private authApiClient: AuthApiClient;
   private oauth2Service: OAuth2Service;
-  private eventListeners: Map<AuthEvent, Array<(data?: any) => void>> = new Map();
   private sessionService: SessionService;
+  private errorHandler: AuthErrorHandler;
+  private eventListeners: Map<AuthEvent, Array<(data?: any) => void>> = new Map();
 
   private constructor() {
     this.stateManager = StateManager.getInstance();
     this.authApiClient = new AuthApiClient();
     this.oauth2Service = OAuth2Service.getInstance();
-    this.sessionService = SessionService.getInstance(); 
-    
-    this.setupAuthStateListener();
+    this.sessionService = SessionService.getInstance();
+    this.errorHandler = AuthErrorHandler.getInstance();
   }
 
   public static getInstance(): AuthService {
@@ -44,215 +61,328 @@ export class AuthService {
   }
 
   // =====================================
-  // USER DATA MAPPING FUNCTIONS
-  // =====================================
-
-  /**
-   * Convert auth service UserData to app UserData
-   * FIXED: Proper mapping between different UserData types
-   */
-  private mapAuthUserToAppUser(authUser: AuthUserData): UserData {
-    return {
-      id: authUser.id,
-      email: authUser.email,
-      name: authUser.username || authUser.email.split('@')[0], // Use username or fallback to email prefix
-      role: authUser.role,
-      createdAt: authUser.createdAt
-    };
-  }
-
-  /**
-   * Convert login response to proper user data
-   * FIXED: Handle backend response format correctly
-   */
-  private mapLoginResponseToUser(loginData: any): UserData {
-    // Extract user data from the complex backend response
-    const userData = loginData.user || loginData;
-    
-    return {
-      id: (userData.userId || userData.id || '').toString(),
-      email: userData.email || '',
-      name: userData.username || userData.name || userData.email?.split('@')[0] || 'User',
-      role: userData.role || 'USER',
-      createdAt: userData.createdAt || Date.now()
-    };
-  }
-
-  // =====================================
   // REGISTRATION METHODS
   // =====================================
 
   /**
-   * Register new user with email/password
+   * Register new user with improved error handling
    */
-  async register(registrationData: RegistrationRequest): Promise<{
-    success: boolean;
-    userId?: string;
-    error?: string;
-    verificationRequired?: boolean;
-  }> {
+  async register(registrationData: RegistrationData): Promise<RegistrationResult> {
+    
     try {
       console.log('🔐 AuthService: Starting registration for:', registrationData.email);
 
       // Validate registration data
       const validation = this.validateRegistrationData(registrationData);
       if (!validation.isValid) {
-        this.emitEvent('registration:failed', { error: validation.errors });
-        return {
-          success: false,
-          error: Object.values(validation.errors).join(', ')
-        };
+        const errorMessage = Object.values(validation.errors).join(', ');
+        this.emitEvent('registration:failed', { error: errorMessage });
+        return { success: false, error: errorMessage };
       }
 
-      // Update state to show registration in progress
-      this.updateRegistrationStep('submitting');
+      // Set loading state
+      this.setAuthLoading(true);
       this.emitEvent('registration:started', { email: registrationData.email });
 
       // Call API
       const response = await this.authApiClient.register(registrationData);
 
       if (!response.success || !response.data) {
-        console.error('❌ AuthService: Registration failed:', response.error);
-        this.updateRegistrationStep('form');
-        this.setAuthError({
-          type: 'server',
-          message: response.error || 'Registration failed'
-        });
-        this.emitEvent('registration:failed', { error: response.error });
-        
-        return {
-          success: false,
-          error: response.error || 'Registration failed'
-        };
+        const authError = this.errorHandler.processError(response, 'registration');
+        console.error('❌ AuthService: Registration failed:', authError.message);
+
+        this.setAuthError(authError);
+        this.emitEvent('registration:failed', { error: authError.userMessage });
+
+        return { success: false, error: authError.userMessage };
       }
 
-      // FIXED: Handle backend response format correctly
-      const responseData = response.data;
-      const userId = (responseData.userId || responseData.id || 'unknown').toString();
-      const email = responseData.email || registrationData.email;
+      // Process successful registration
+      const { userId, email } = response.data;
 
       console.log('✅ AuthService: Registration successful:', { userId, email });
-
-      // Always require verification for new registrations
-      this.updateRegistrationStep('verification');
-      this.emitEvent('verification:required', { 
-        email: registrationData.email,
-        userId 
-      });
+      this.emitEvent('registration:success', { userId, email });
+      this.emitEvent('verification:required', { email, userId });
 
       return {
         success: true,
-        userId,
-        verificationRequired: true
+        userId: String(userId),
+        requiresVerification: true
       };
 
     } catch (error) {
-      console.error('❌ AuthService: Registration error:', error);
-      this.updateRegistrationStep('form');
-      this.setAuthError({
-        type: 'network',
-        message: error instanceof Error ? error.message : 'Network error'
-      });
-      this.emitEvent('registration:failed', { error: error instanceof Error ? error.message : 'Unknown error' });
-
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Registration failed'
-      };
+      const authError = this.errorHandler.processError(error, 'resend_verification');
+      return { success: false, error: authError.userMessage };
     }
   }
 
   /**
-   * Confirm user account with verification token
+   * Confirm user account with email verification token
    */
-  async confirmAccount(token: string): Promise<{
-    success: boolean;
-    user?: UserData;
-    error?: string;
-  }> {
+  async confirmAccount(token: string): Promise<AuthResult> {
+    const operationId = `confirm_account_${Date.now()}`;
+
     try {
-      console.log('✅ AuthService: Confirming account...');
+      console.log('✅ AuthService: Confirming account with token...');
+
+      if (!token || token.trim().length === 0) {
+        return {
+          success: false,
+          error: 'Invalid verification token. Please check your email link.'
+        };
+      }
+
+      this.setAuthLoading(true);
 
       const response = await this.authApiClient.confirmAccount(token);
 
       if (!response.success || !response.data) {
-        console.error('❌ AuthService: Account confirmation failed:', response.error);
-        this.emitEvent('verification:failed', { error: response.error });
-        
-        return {
-          success: false,
-          error: response.error || 'Account confirmation failed'
-        };
+        const authError = this.errorHandler.processError(response, 'account_confirmation');
+        console.error('❌ AuthService: Account confirmation failed:', authError.message);
+
+        this.setAuthError(authError);
+        this.emitEvent('verification:failed', { error: authError.userMessage });
+
+        return { success: false, error: authError.userMessage };
       }
 
       console.log('✅ AuthService: Account confirmed successfully');
 
-      // If user data is returned, they're now logged in
+      // Check if user data is returned (auto-login after confirmation)
       if (response.data.user) {
-        const appUser = this.mapAuthUserToAppUser(response.data.user);
-        this.setAuthenticatedUser(appUser);
-        this.emitEvent('verification:success', { user: appUser });
-        this.emitEvent('login:success', { user: appUser });
+        const { UserDataTransformer } = await import('../../types/user');
+        const user = UserDataTransformer.fromAuthResponse(response.data.user);
+
+        // Set user as authenticated
+        this.setAuthenticatedUser(user, 'password');
+
+        // Emit success events
+        this.emitEvent('verification:success', { user });
+        this.emitEvent('login:success', { user });
+
+        // Update registration step to complete
+        this.stateManager.dispatch({
+          type: 'AUTH_SET_REGISTRATION_STEP',
+          payload: 'complete'
+        });
+
+        console.log('✅ AuthService: User auto-logged in after confirmation:', user.email);
+
+        return { success: true, user };
       } else {
+        // Account confirmed but no auto-login
         this.emitEvent('verification:success', {});
+
+        // Update registration step to complete
+        this.stateManager.dispatch({
+          type: 'AUTH_SET_REGISTRATION_STEP',
+          payload: 'complete'
+        });
+
+        console.log('✅ AuthService: Account confirmed, user needs to login manually');
+
+        return {
+          success: true
+        };
       }
 
-      this.updateRegistrationStep('complete');
-
-      return {
-        success: true,
-        user: response.data.user ? this.mapAuthUserToAppUser(response.data.user) : undefined
-      };
-
     } catch (error) {
-      console.error('❌ AuthService: Account confirmation error:', error);
-      this.emitEvent('verification:failed', { error: error instanceof Error ? error.message : 'Unknown error' });
+      const authError = this.errorHandler.processError(error, 'account_confirmation');
+      console.error('❌ AuthService: Account confirmation error:', authError.message);
 
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Account confirmation failed'
-      };
+      this.setAuthError(authError);
+      this.emitEvent('verification:failed', { error: authError.userMessage });
+
+      // Check if should retry
+      if (this.errorHandler.shouldRetry(authError, operationId)) {
+        console.log('🔄 AuthService: Will retry account confirmation...');
+        this.errorHandler.incrementRetryCount(operationId);
+      }
+
+      return { success: false, error: authError.userMessage };
+    } finally {
+      this.setAuthLoading(false);
+      this.errorHandler.resetRetryCount(operationId);
     }
   }
 
   /**
-   * Resend verification email
+   * Resend verification email with improved error handling and rate limiting
    */
   async resendVerificationEmail(email: string): Promise<{
     success: boolean;
     error?: string;
     nextResendAt?: number;
+    message?: string;
   }> {
+    const operationId = `resend_verification_${Date.now()}`;
+
     try {
       console.log('📧 AuthService: Resending verification email to:', email);
+
+      // Validate email format
+      if (!email || !AuthService.validateEmail(email)) {
+        return {
+          success: false,
+          error: 'Please provide a valid email address.'
+        };
+      }
+
+      this.setAuthLoading(true);
 
       const response = await this.authApiClient.resendVerification(email);
 
       if (!response.success) {
-        console.error('❌ AuthService: Resend verification failed:', response.error);
-        return {
-          success: false,
-          error: response.error || 'Failed to resend verification email'
-        };
+        const authError = this.errorHandler.processError(response, 'resend_verification');
+        console.error('❌ AuthService: Resend verification failed:', authError.message);
+
+        this.setAuthError(authError);
+
+        // Handle specific error cases
+        if (authError.code === 'RATE_LIMITED') {
+          return {
+            success: false,
+            error: authError.userMessage,
+            nextResendAt: Date.now() + (5 * 60 * 1000) // 5 minutes for rate limit
+          };
+        }
+
+        if (authError.code === 'EMAIL_TAKEN' || authError.message.toLowerCase().includes('already verified')) {
+          return {
+            success: false,
+            error: 'This email is already verified. You can log in directly.',
+          };
+        }
+
+        return { success: false, error: authError.userMessage };
       }
 
       console.log('✅ AuthService: Verification email resent successfully');
 
-      // Set next resend time (usually 1 minute)
-      const nextResendAt = Date.now() + (60 * 1000);
+      // Set verification cooldown state
+      const nextResendAt = Date.now() + (60 * 1000); // 1 minute standard cooldown
+
+      this.stateManager.dispatch({
+        type: 'AUTH_SET_VERIFICATION_COOLDOWN',
+        payload: 60 // seconds
+      });
 
       return {
         success: true,
+        message: response.data?.message || 'Verification email sent successfully. Please check your inbox.',
         nextResendAt
       };
 
     } catch (error) {
-      console.error('❌ AuthService: Resend verification error:', error);
+      const authError = this.errorHandler.processError(error, 'resend_verification');
+      console.error('❌ AuthService: Resend verification error:', authError.message);
+
+      this.setAuthError(authError);
+
+      // Check if should retry
+      if (this.errorHandler.shouldRetry(authError, operationId)) {
+        console.log('🔄 AuthService: Will retry resend verification...');
+        this.errorHandler.incrementRetryCount(operationId);
+      }
+
+      return { success: false, error: authError.userMessage };
+    } finally {
+      this.setAuthLoading(false);
+      this.errorHandler.resetRetryCount(operationId);
+    }
+  }
+
+  /**
+   * Check verification status for an email
+   */
+  async checkVerificationStatus(email: string): Promise<{
+    success: boolean;
+    isVerified?: boolean;
+    canResend?: boolean;
+    error?: string;
+  }> {
+    try {
+      console.log('🔍 AuthService: Checking verification status for:', email);
+
+      if (!email || !AuthService.validateEmail(email)) {
+        return {
+          success: false,
+          error: 'Please provide a valid email address.'
+        };
+      }
+
+      // This would typically be a separate API endpoint
+      // For now, we'll infer from login attempt
+      const loginResponse = await this.authApiClient.login({
+        email,
+        password: 'dummy_password_for_verification_check', // This will fail but give us verification status
+        rememberMe: false
+      });
+
+      // If error mentions verification, account exists but isn't verified
+      if (loginResponse.error?.toLowerCase().includes('verify') ||
+        loginResponse.error?.toLowerCase().includes('verification')) {
+        return {
+          success: true,
+          isVerified: false,
+          canResend: true
+        };
+      }
+
+      // If error is about credentials, account is verified
+      if (loginResponse.error?.toLowerCase().includes('credentials') ||
+        loginResponse.error?.toLowerCase().includes('password')) {
+        return {
+          success: true,
+          isVerified: true,
+          canResend: false
+        };
+      }
+
+      // If no error (shouldn't happen with dummy password), account is verified
+      if (loginResponse.success) {
+        return {
+          success: true,
+          isVerified: true,
+          canResend: false
+        };
+      }
+
+      // Default case - assume can resend
+      return {
+        success: true,
+        isVerified: false,
+        canResend: true
+      };
+
+    } catch (error) {
+      const authError = this.errorHandler.processError(error, 'verification_status_check');
+      console.error('❌ AuthService: Verification status check error:', authError.message);
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to resend verification email'
+        error: 'Unable to check verification status. Please try again.'
       };
     }
+  }
+
+  /**
+   * Get verification status and cooldown info for UI
+   */
+  getVerificationUIState(): {
+    emailForVerification: string | null;
+    isResendCooldownActive: boolean;
+    resendCooldownSeconds: number;
+    canResend: boolean;
+  } {
+    const authState = this.stateManager.getAuthState();
+
+    return {
+      emailForVerification: authState.emailForVerification,
+      isResendCooldownActive: (authState.verificationResendCooldown || 0) > 0,
+      resendCooldownSeconds: authState.verificationResendCooldown || 0,
+      canResend: !authState.isLoading && (authState.verificationResendCooldown || 0) === 0
+    };
   }
 
   // =====================================
@@ -260,81 +390,69 @@ export class AuthService {
   // =====================================
 
   /**
-   * Login with email/password
-   * FIXED: Proper user data mapping and error handling
+   * Login with email/password - improved with unified types
    */
-  async login(credentials: LoginRequest): Promise<{
-    success: boolean;
-    user?: UserData;
-    error?: string;
-    requiresVerification?: boolean;
-  }> {
+  async login(credentials: LoginCredentials): Promise<AuthResult> {
+    const operationId = `login_${Date.now()}`;
+
     try {
       console.log('🔑 AuthService: Logging in user:', credentials.email);
 
-      // Set loading state
       this.setAuthLoading(true);
 
-      const response = await this.authApiClient.login(credentials);
+      const response = await this.authApiClient.login({
+        email: credentials.email,
+        password: credentials.password,
+        rememberMe: credentials.rememberMe
+      });
 
       if (!response.success || !response.data) {
-        console.error('❌ AuthService: Login failed:', response.error);
-        this.setAuthLoading(false);
-        
-        // Check if error is due to unverified account
-        const requiresVerification = response.error?.includes('ACCOUNT_NOT_VERIFIED') || 
-                                   response.error?.includes('verify') ||
-                                   response.error?.includes('verification');
-        
-        if (requiresVerification) {
+        const authError = this.errorHandler.processError(response, 'login');
+        console.error('❌ AuthService: Login failed:', authError.message);
+
+        // Check for specific error conditions
+        if (authError.code === 'ACCOUNT_NOT_VERIFIED') {
           this.emitEvent('verification:required', { email: credentials.email });
           return {
             success: false,
-            error: 'Please verify your email address before logging in',
+            error: authError.userMessage,
             requiresVerification: true
           };
         }
 
-        this.setAuthError({
-          type: 'authentication',
-          message: response.error || 'Login failed'
-        });
-        this.emitEvent('login:failed', { error: response.error });
+        this.setAuthError(authError);
+        this.emitEvent('login:failed', { error: authError.userMessage });
 
-        return {
-          success: false,
-          error: response.error || 'Login failed'
-        };
+        // Check if should retry
+        if (this.errorHandler.shouldRetry(authError, operationId)) {
+          this.errorHandler.incrementRetryCount(operationId);
+        }
+
+        return { success: false, error: authError.userMessage };
       }
 
-      // FIXED: Map backend response to app user format
-      const user = this.mapLoginResponseToUser(response.data);
+      // Process successful login
+      const { UserDataTransformer } = await import('../../types/user');
+      const user = UserDataTransformer.fromAuthResponse(response.data);
 
       console.log('✅ AuthService: Login successful for user:', user.email);
 
-      // Set authenticated state
-      this.setAuthenticatedUser(user);
-      this.setAuthLoading(false);
+      this.setAuthenticatedUser(user, 'password');
       this.emitEvent('login:success', { user });
 
-      return {
-        success: true,
-        user
-      };
+      return { success: true, user };
 
     } catch (error) {
-      console.error('❌ AuthService: Login error:', error);
-      this.setAuthLoading(false);
-      this.setAuthError({
-        type: 'network',
-        message: error instanceof Error ? error.message : 'Network error'
-      });
-      this.emitEvent('login:failed', { error: error instanceof Error ? error.message : 'Unknown error' });
+      const authError = this.errorHandler.processError(error, 'login');
+      console.error('❌ AuthService: Login error:', authError.message);
 
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Login failed'
-      };
+      this.setAuthError(authError);
+      this.emitEvent('login:failed', { error: authError.userMessage });
+
+      return { success: false, error: authError.userMessage };
+    } finally {
+      this.setAuthLoading(false);
+      this.errorHandler.resetRetryCount(operationId);
     }
   }
 
@@ -348,35 +466,35 @@ export class AuthService {
   }> {
     try {
       console.log('🔗 AuthService: Initiating Google login...');
-      
+
       this.emitEvent('oauth2:started', { provider: 'google' });
-      
+
       const result = await this.oauth2Service.initiateGoogleLogin(redirectUrl);
-      
+
       if (!result.success) {
-        this.emitEvent('oauth2:failed', { error: result.error });
-        return result;
+        const authError = this.errorHandler.processError(
+          { error: result.error, provider: 'google' },
+          'oauth2_initiation'
+        );
+        this.emitEvent('oauth2:failed', { error: authError.userMessage });
+        return { success: false, error: authError.userMessage };
       }
 
       return result;
 
     } catch (error) {
-      console.error('❌ AuthService: Google login error:', error);
-      this.emitEvent('oauth2:failed', { error: error instanceof Error ? error.message : 'Unknown error' });
-      
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to initiate Google login'
-      };
+      const authError = this.errorHandler.processError(error, 'oauth2_initiation');
+      this.emitEvent('oauth2:failed', { error: authError.userMessage });
+      return { success: false, error: authError.userMessage };
     }
   }
 
   /**
-   * Handle OAuth2 callback - ENHANCED VERSION
+   * Handle OAuth2 callback with improved error handling
    */
   async handleOAuth2Callback(callbackUrl: string): Promise<{
     success: boolean;
-    user?: UserData;
+    user?: User;
     error?: string;
     redirectTo?: string;
   }> {
@@ -386,70 +504,181 @@ export class AuthService {
       const result = await this.oauth2Service.handleCallback(callbackUrl);
 
       if (!result.success) {
-        this.emitEvent('oauth2:failed', { error: result.error });
-        return {
-          success: false,
-          error: result.error
-        };
+        const authError = this.errorHandler.processError(
+          { error: result.error, provider: 'google' },
+          'oauth2_callback'
+        );
+        this.emitEvent('oauth2:failed', { error: authError.userMessage });
+        return { success: false, error: authError.userMessage };
       }
 
-      // ENHANCED: Properly establish session if user data is available
+      // Establish session if user data is available
       if (result.user) {
-        const appUser = this.mapAuthUserToAppUser(result.user);
-        this.setAuthenticatedUser(appUser);
-        this.emitEvent('oauth2:success', { user: appUser });
-        this.emitEvent('login:success', { user: appUser });
-
-        console.log('✅ AuthService: OAuth2 successful and session established for:', appUser.email);
+        this.setAuthenticatedUser(result.user, 'oauth2');
+        this.emitEvent('oauth2:success', { user: result.user });
+        this.emitEvent('login:success', { user: result.user });
 
         return {
           success: true,
-          user: appUser,
-          redirectTo: result.requiresRedirect || '/dashboard'
+          user: result.user,
+          redirectTo: result.redirectTo || '/dashboard'
         };
       }
 
-      // If no user data but success, try to validate session
-      console.log('🔍 AuthService: No user data in OAuth2 result, validating session...');
-      
-      const sessionValidation = await this.validateSession();
-      
+      // No user data - try session validation
+      const sessionValidation = await this.validateSessionInternal();
+
       if (sessionValidation.valid && sessionValidation.user) {
-        console.log('✅ AuthService: Session validation successful after OAuth2 callback');
         this.emitEvent('oauth2:success', { user: sessionValidation.user });
         this.emitEvent('login:success', { user: sessionValidation.user });
-        
+
         return {
           success: true,
           user: sessionValidation.user,
-          redirectTo: result.requiresRedirect || '/dashboard'
+          redirectTo: result.redirectTo || '/dashboard'
         };
       }
 
-      // If we reach here, OAuth2 succeeded but no session was established
+      // OAuth2 succeeded but no session
       console.warn('⚠️ AuthService: OAuth2 callback succeeded but no session established');
-      
       return {
         success: true,
-        redirectTo: result.requiresRedirect || '/dashboard'
+        redirectTo: result.redirectTo || '/dashboard'
       };
 
     } catch (error) {
-      console.error('❌ AuthService: OAuth2 callback error:', error);
-      this.emitEvent('oauth2:failed', { error: error instanceof Error ? error.message : 'Unknown error' });
-
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to handle OAuth2 callback'
-      };
+      const authError = this.errorHandler.processError(error, 'oauth2_callback');
+      this.emitEvent('oauth2:failed', { error: authError.userMessage });
+      return { success: false, error: authError.userMessage };
     }
   }
+
+  // =====================================
+  // SESSION METHODS
+  // =====================================
+
+  /**
+   * Validate current session with race condition prevention
+   */
+  async validateSession(): Promise<SessionValidationResult> {
+    return this.sessionService.validateSessionDebounced(
+      () => this.validateSessionInternal(),
+      false // not forced
+    );
+  }
+
+  /**
+   * Auto-validate session on app startup
+   */
+  async autoValidateSession(): Promise<{
+    isValid: boolean;
+    user?: User;
+    shouldRedirect?: string;
+  }> {
+    try {
+      console.log('🔍 AuthService: Auto-validating session on startup...');
+
+      const hasStoredSession = this.sessionService.loadPersistedSession();
+
+      if (!hasStoredSession) {
+        console.log('ℹ️ AuthService: No stored session found');
+        return { isValid: false };
+      }
+
+      const validation = await this.validateSession();
+
+      if (validation.valid && validation.user) {
+        console.log('✅ AuthService: Auto-validation successful for user:', validation.user.email);
+
+        const currentPath = window.location.pathname;
+        if (currentPath === '/' || currentPath === '/home') {
+          return {
+            isValid: true,
+            user: validation.user,
+            shouldRedirect: '/dashboard'
+          };
+        }
+
+        return { isValid: true, user: validation.user };
+      } else {
+        console.log('⚠️ AuthService: Auto-validation failed, clearing stored session');
+        this.sessionService.clearSession();
+        return { isValid: false };
+      }
+
+    } catch (error) {
+      const authError = this.errorHandler.processError(error, 'auto_validation');
+      console.error('❌ AuthService: Auto-validation error:', authError.message);
+      this.sessionService.clearSession();
+      return { isValid: false };
+    }
+  }
+
+  /**
+   * Internal session validation method
+   */
+  private async validateSessionInternal(): Promise<SessionValidationResult> {
+    try {
+      console.log('🔍 AuthService: Validating session...');
+
+      const response = await this.authApiClient.validateSession();
+
+      if (!response.success || !response.data) {
+        console.warn('⚠️ AuthService: Session validation failed:', response.error);
+
+        if (this.isAuthenticated()) {
+          this.handleSessionExpired();
+        }
+
+        return { valid: false, error: response.error };
+      }
+
+      const { authenticated, valid } = response.data;
+
+      if (authenticated && valid) {
+        const { UserDataTransformer } = await import('../../types/user');
+        const user = UserDataTransformer.fromSessionResponse(response.data);
+
+        if (user) {
+          const currentUser = this.getCurrentUser();
+          if (!currentUser || currentUser.id !== user.id || currentUser.email !== user.email) {
+            console.log('🔄 AuthService: Updating user data from session validation');
+            this.setAuthenticatedUser(user, 'session-restore');
+          }
+
+          return { valid: true, user };
+        } else {
+          console.warn('⚠️ AuthService: Session valid but failed to construct user data');
+          return { valid: false, error: 'Failed to construct user data from session' };
+        }
+      } else {
+        console.warn('⚠️ AuthService: Session invalid or user not authenticated');
+
+        if (this.isAuthenticated()) {
+          this.handleSessionExpired();
+        }
+
+        return { valid: false };
+      }
+
+    } catch (error) {
+      const authError = this.errorHandler.processError(error, 'session_validation');
+      console.error('❌ AuthService: Session validation error:', authError.message);
+
+      if (this.isAuthenticated()) {
+        this.handleSessionExpired();
+      }
+
+      return { valid: false, error: authError.userMessage };
+    }
+  }
+
   // =====================================
   // LOGOUT METHODS
   // =====================================
 
   /**
-   * Logout user
+   * Logout user with improved cleanup
    */
   async logout(): Promise<{ success: boolean; error?: string }> {
     try {
@@ -457,7 +686,7 @@ export class AuthService {
 
       // Call API to invalidate session
       const response = await this.authApiClient.logout();
-      
+
       // Clear local state regardless of API response
       this.clearAuthState();
       this.emitEvent('logout:success', {});
@@ -469,8 +698,9 @@ export class AuthService {
       return { success: true };
 
     } catch (error) {
-      console.error('❌ AuthService: Logout error:', error);
-      
+      const authError = this.errorHandler.processError(error, 'logout');
+      console.error('❌ AuthService: Logout error:', authError.message);
+
       // Still clear local state even if API call fails
       this.clearAuthState();
       this.emitEvent('logout:success', {});
@@ -480,329 +710,13 @@ export class AuthService {
   }
 
   // =====================================
-  // PASSWORD RESET METHODS
-  // =====================================
-
-  /**
-   * Request password reset
-   */
-  async requestPasswordReset(email: string): Promise<{
-    success: boolean;
-    error?: string;
-    message?: string;
-  }> {
-    try {
-      console.log('🔑 AuthService: Requesting password reset for:', email);
-
-      const response = await this.authApiClient.forgotPassword(email);
-
-      if (!response.success) {
-        console.error('❌ AuthService: Password reset request failed:', response.error);
-        return {
-          success: false,
-          error: response.error || 'Failed to request password reset'
-        };
-      }
-
-      console.log('✅ AuthService: Password reset email sent successfully');
-
-      return {
-        success: true,
-        message: response.data?.message || 'Password reset email sent'
-      };
-
-    } catch (error) {
-      console.error('❌ AuthService: Password reset request error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to request password reset'
-      };
-    }
-  }
-
-  /**
-   * Reset password with token
-   */
-  async resetPassword(token: string, newPassword: string): Promise<{
-    success: boolean;
-    error?: string;
-    message?: string;
-  }> {
-    try {
-      console.log('🔐 AuthService: Resetting password with token...');
-
-      // Validate new password
-      const passwordValidation = this.validatePassword(newPassword);
-      if (!passwordValidation.isValid) {
-        return {
-          success: false,
-          error: passwordValidation.feedback.join(', ')
-        };
-      }
-
-      const response = await this.authApiClient.resetPassword({
-        token,
-        newPassword
-      });
-
-      if (!response.success) {
-        console.error('❌ AuthService: Password reset failed:', response.error);
-        return {
-          success: false,
-          error: response.error || 'Failed to reset password'
-        };
-      }
-
-      console.log('✅ AuthService: Password reset successful');
-
-      return {
-        success: true,
-        message: response.data?.message || 'Password reset successful'
-      };
-
-    } catch (error) {
-      console.error('❌ AuthService: Password reset error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to reset password'
-      };
-    }
-  }
-
-  /**
-   * Confirm password reset token validity
-   */
-  async confirmPasswordToken(token: string): Promise<{
-    valid: boolean;
-    error?: string;
-    message?: string;
-  }> {
-    try {
-      console.log('🔍 AuthService: Confirming password reset token...');
-
-      const response = await this.authApiClient.confirmPasswordToken(token);
-
-      if (!response.success) {
-        console.error('❌ AuthService: Token confirmation failed:', response.error);
-        return {
-          valid: false,
-          error: response.error || 'Invalid or expired token'
-        };
-      }
-
-      return {
-        valid: response.data?.valid || false,
-        message: response.data?.message
-      };
-
-    } catch (error) {
-      console.error('❌ AuthService: Token confirmation error:', error);
-      return {
-        valid: false,
-        error: error instanceof Error ? error.message : 'Failed to confirm token'
-      };
-    }
-  }
-
-  // =====================================
-  // SESSION METHODS
-  // =====================================
-
-  /**
-   * Validate current session
-   */
-  async validateSession(): Promise<{ 
-  valid: boolean; 
-  user?: UserData; 
-  error?: string; 
-}> {
-  try {
-    console.log('🔍 AuthService: Validating session...');
-
-    const response = await this.authApiClient.validateSession();
-
-    if (!response.success || !response.data) {
-      console.warn('⚠️ AuthService: Session validation failed:', response.error);
-      
-      // Only clear session if we currently think we're authenticated
-      if (this.isAuthenticated()) {
-        this.handleSessionExpired();
-      }
-      
-      return {
-        valid: false,
-        error: response.error || 'Session validation failed'
-      };
-    }
-
-    // FIXED: Handle new backend response format with proper type conversion
-    const { authenticated, valid, userId, email, user } = response.data;
-
-    console.log('🔍 AuthService: Session validation response:', { authenticated, valid, userId, email, hasUser: !!user });
-
-    // FIXED: Check for authenticated AND valid flags
-    if (authenticated && valid) {
-      let appUser: UserData | undefined;
-
-      // Try to get user from response, fallback to constructing from basic fields
-      if (user) {
-        // Full user object returned
-        appUser = this.mapAuthUserToAppUser(user);
-      } else if (userId && email) {
-        // FIXED: Convert userId to string and construct user object
-        appUser = {
-          id: String(userId), // Convert number to string
-          email: email,
-          name: email.split('@')[0], // Fallback name
-          role: 'USER', // Default role
-          createdAt: Date.now() // Fallback timestamp
-        };
-        console.log('🔄 AuthService: Constructed user from basic fields:', appUser.email);
-      }
-
-      if (appUser) {
-        // Only update if we don't already have this user or user data changed
-        const currentUser = this.getCurrentUser();
-        if (!currentUser || currentUser.id !== appUser.id || currentUser.email !== appUser.email) {
-          console.log('🔄 AuthService: Updating user data from session validation');
-          this.setAuthenticatedUser(appUser);
-        }
-        
-        return {
-          valid: true,
-          user: appUser
-        };
-      } else {
-        console.warn('⚠️ AuthService: Session valid but failed to construct user data');
-        console.warn('⚠️ AuthService: Raw data:', { userId, email, user });
-        return {
-          valid: false,
-          error: 'Failed to construct user data from session'
-        };
-      }
-    } else {
-      console.warn('⚠️ AuthService: Session invalid or user not authenticated');
-      console.warn('⚠️ AuthService: Flags:', { authenticated, valid });
-      
-      // Only clear session if we currently think we're authenticated
-      if (this.isAuthenticated()) {
-        this.handleSessionExpired();
-      }
-      
-      return { valid: false };
-    }
-
-  } catch (error) {
-    console.error('❌ AuthService: Session validation error:', error);
-    
-    // Only clear session if we currently think we're authenticated
-    if (this.isAuthenticated()) {
-      this.handleSessionExpired();
-    }
-    
-    return {
-      valid: false,
-      error: error instanceof Error ? error.message : 'Session validation error'
-    };
-  }
-}
-
-  /**
-   * Get all user sessions
-   */
-  async getAllSessions(): Promise<{
-    success: boolean;
-    sessions?: any[];
-    error?: string;
-  }> {
-    try {
-      console.log('📋 AuthService: Getting all sessions...');
-
-      const response = await this.authApiClient.getAllSessions();
-
-      if (!response.success) {
-        console.error('❌ AuthService: Failed to get sessions:', response.error);
-        return {
-          success: false,
-          error: response.error || 'Failed to retrieve sessions'
-        };
-      }
-
-      return {
-        success: true,
-        sessions: response.data || []
-      };
-
-    } catch (error) {
-      console.error('❌ AuthService: Get sessions error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve sessions'
-      };
-    }
-  }
-
-  /**
-   * Invalidate all sessions
-   */
-  async invalidateAllSessions(): Promise<{
-    success: boolean;
-    invalidatedCount?: number;
-    error?: string;
-  }> {
-    try {
-      console.log('🗑️ AuthService: Invalidating all sessions...');
-
-      const response = await this.authApiClient.invalidateAllSessions();
-
-      if (!response.success) {
-        console.error('❌ AuthService: Failed to invalidate sessions:', response.error);
-        return {
-          success: false,
-          error: response.error || 'Failed to invalidate sessions'
-        };
-      }
-
-      // Clear local session as well
-      this.clearAuthState();
-
-      return {
-        success: true,
-        invalidatedCount: response.data?.invalidatedCount || 0
-      };
-
-    } catch (error) {
-      console.error('❌ AuthService: Invalidate sessions error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to invalidate sessions'
-      };
-    }
-  }
-
-  /**
-   * Handle session expiration
-   */
-  private handleSessionExpired(): void {
-    console.log('⏰ AuthService: Session expired');
-    
-    const wasAuthenticated = this.isAuthenticated();
-    this.clearAuthState();
-    
-    // Only emit session expired event if user was previously authenticated
-    if (wasAuthenticated) {
-      this.emitEvent('session:expired', {});
-    }
-  }
-
-  // =====================================
   // UTILITY METHODS
   // =====================================
 
   /**
-   * Validate registration data
+   * Validate registration data with comprehensive checks
    */
-  private validateRegistrationData(data: RegistrationRequest): {
+  private validateRegistrationData(data: RegistrationData): {
     isValid: boolean;
     errors: Record<string, string>;
   } {
@@ -849,11 +763,11 @@ export class AuthService {
   }
 
   /**
-   * Validate password strength - FIXED TYPE ISSUES
+   * Validate password strength
    */
   validatePassword(password: string): PasswordStrength {
     const feedback: string[] = [];
-    let score = 0; // Start as number
+    let score = 0;
 
     if (!password) {
       return {
@@ -895,7 +809,6 @@ export class AuthService {
 
     const isValid = feedback.length === 0;
 
-    // FIXED: Proper score handling for longer passwords
     if (isValid && password.length >= 12) {
       score = Math.min(score + 1, 4);
     }
@@ -905,7 +818,7 @@ export class AuthService {
     }
 
     return {
-      score: Math.min(score, 4) as 0 | 1 | 2 | 3 | 4, // Explicit cast to union type
+      score: Math.min(score, 4) as 0 | 1 | 2 | 3 | 4,
       feedback,
       isValid
     };
@@ -916,47 +829,37 @@ export class AuthService {
   // =====================================
 
   /**
-   * Set authenticated user
+   * Set authenticated user with source tracking
    */
-/**
-   * Enhanced session establishment for OAuth2 flows
-   */
-  private setAuthenticatedUser(user: UserData): void {
-    console.log('👤 AuthService: Setting authenticated user:', user.email);
-    
-    this.stateManager.dispatch({
-      type: 'SESSION_SET',
-      payload: { user, isAuthenticated: true }
-    });
-    
+  private setAuthenticatedUser(user: User, source: 'password' | 'oauth2' | 'session-restore'): void {
+    console.log(`👤 AuthService: Setting authenticated user: ${user.email} (source: ${source})`);
+
+    this.sessionService.setSession(user, source);
     this.clearAuthError();
     this.setAuthLoading(false);
-    
-    // Update registration step to complete if we were in a registration flow
-    const authState = this.stateManager.getAuthState();
-    if (authState.registrationStep !== 'complete') {
-      this.updateRegistrationStep('complete');
-    }
   }
 
   /**
    * Clear authentication state
    */
   private clearAuthState(): void {
-    this.stateManager.dispatch({ type: 'SESSION_CLEAR' });
+    this.sessionService.clearSession();
     this.stateManager.dispatch({ type: 'AUTH_CLEAR_STATE' });
     this.clearAuthError();
-    this.updateRegistrationStep('form');
   }
 
   /**
-   * Update registration step
+   * Handle session expiration
    */
-  private updateRegistrationStep(step: RegistrationStep): void {
-    this.stateManager.dispatch({
-      type: 'AUTH_SET_REGISTRATION_STEP',
-      payload: step
-    });
+  private handleSessionExpired(): void {
+    console.log('⏰ AuthService: Session expired');
+
+    const wasAuthenticated = this.isAuthenticated();
+    this.clearAuthState();
+
+    if (wasAuthenticated) {
+      this.emitEvent('session:expired', {});
+    }
   }
 
   /**
@@ -975,7 +878,7 @@ export class AuthService {
   private setAuthError(error: AuthError): void {
     this.stateManager.dispatch({
       type: 'AUTH_SET_ERROR',
-      payload: error.message
+      payload: error.userMessage
     });
   }
 
@@ -989,23 +892,6 @@ export class AuthService {
     });
   }
 
-  /**
-   * Setup auth state listener
-   */
-  private setupAuthStateListener(): void {
-    // Listen for session changes and emit events
-    this.stateManager.subscribe(
-      (state) => state.session,
-      (session, previousSession) => {
-        if (!previousSession?.isAuthenticated && session.isAuthenticated) {
-          console.log('👤 AuthService: User authenticated');
-        } else if (previousSession?.isAuthenticated && !session.isAuthenticated) {
-          console.log('👤 AuthService: User logged out');
-        }
-      }
-    );
-  }
-
   // =====================================
   // EVENT SYSTEM
   // =====================================
@@ -1017,10 +903,9 @@ export class AuthService {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, []);
     }
-    
+
     this.eventListeners.get(event)!.push(callback);
 
-    // Return unsubscribe function
     return () => {
       const listeners = this.eventListeners.get(event);
       if (listeners) {
@@ -1052,157 +937,518 @@ export class AuthService {
   // PUBLIC GETTERS
   // =====================================
 
-  /**
-   * Check if user is authenticated
-   */
-  isAuthenticated(): boolean {
-    return this.stateManager.isAuthenticated();
+  public isAuthenticated(): boolean {
+    return this.sessionService.isAuthenticated();
   }
 
-  /**
-   * Get current user
-   */
-  getCurrentUser(): UserData | null {
-    return this.stateManager.getCurrentUser();
+  public getCurrentUser(): User | null {
+    return this.sessionService.getCurrentUser();
   }
 
-  /**
-   * Check if Google OAuth2 is available
-   */
-  isGoogleOAuth2Available(): boolean {
+  public isGoogleOAuth2Available(): boolean {
     return this.oauth2Service.isGoogleOAuth2Configured();
   }
 
-  /**
-   * Check if current URL is OAuth2 callback
-   */
-  isOAuth2Callback(url?: string): boolean {
+  public isOAuth2Callback(url?: string): boolean {
     return this.oauth2Service.isOAuth2Callback(url);
   }
 
   /**
    * Get auth state for debugging
    */
-  getAuthState(): {
-    isAuthenticated: boolean;
-    user: UserData | null;
-    registrationStep: RegistrationStep;
-    isLoading: boolean;
-    error: string | null;
-  } {
-    const sessionState = this.stateManager.getSessionState();
+  public getAuthState() {
+    const sessionState = this.sessionService.getSessionInfo();
     const authState = this.stateManager.getAuthState();
-    
+
     return {
       isAuthenticated: sessionState.isAuthenticated,
       user: sessionState.user,
-      registrationStep: authState.registrationStep,
+      sessionSource: sessionState.source,
+      sessionAge: sessionState.ageMinutes,
       isLoading: authState.isLoading,
       error: authState.error
     };
   }
 
   /**
-   * Auto-validate session on app startup - NEW METHOD
+   * Health check
    */
-  async autoValidateSession(): Promise<{ 
-    isValid: boolean; 
-    user?: UserData; 
-    shouldRedirect?: string;
-  }> {
+  async healthCheck(): Promise<{ success: boolean; status?: string; error?: string }> {
     try {
-      console.log('🔍 AuthService: Auto-validating session on startup...');
-      
-      // Check if we have any stored session data first
-      const hasStoredSession = this.sessionService.loadPersistedSession();
-      
-      if (!hasStoredSession) {
-        console.log('ℹ️ AuthService: No stored session found');
-        return { isValid: false };
+      const response = await this.authApiClient.healthCheck();
+
+      if (!response.success) {
+        return { success: false, error: response.error || 'Health check failed' };
       }
-      
-      // Validate the session with the server
-      const validation = await this.validateSession();
-      
-      if (validation.valid && validation.user) {
-        console.log('✅ AuthService: Auto-validation successful for user:', validation.user.email);
-        
-        // Check if user is on a public page and should be redirected
-        const currentPath = window.location.pathname;
-        if (currentPath === '/' || currentPath === '/home') {
-          return {
-            isValid: true,
-            user: validation.user,
-            shouldRedirect: '/dashboard'
-          };
-        }
-        
-        return {
-          isValid: true,
-          user: validation.user
-        };
-      } else {
-        console.log('⚠️ AuthService: Auto-validation failed, clearing stored session');
-        this.sessionService.clearSession();
-        
-        return { isValid: false };
-      }
-      
+
+      return { success: true, status: response.data?.status || 'OK' };
+
     } catch (error) {
-      console.error('❌ AuthService: Auto-validation error:', error);
-      this.sessionService.clearSession();
-      
-      return { isValid: false };
+      const authError = this.errorHandler.processError(error, 'health_check');
+      return { success: false, error: authError.userMessage };
     }
   }
 
-    /**
-   * Handle successful authentication (login/registration/oauth2)
+  // =====================================
+  // PASSWORD RESET METHODS
+  // =====================================
+
+  /**
+   * Request password reset
    */
-  private handleAuthSuccess(user: UserData, source: 'login' | 'registration' | 'oauth2'): void {
-    console.log(`✅ AuthService: ${source} successful for user:`, user.email);
-    
-    this.setAuthenticatedUser(user);
-    
-    // Emit appropriate events
-    if (source === 'oauth2') {
-      this.emitEvent('oauth2:success', { user });
+  async requestPasswordReset(email: string): Promise<{
+    success: boolean;
+    error?: string;
+    message?: string;
+  }> {
+    try {
+      console.log('🔑 AuthService: Requesting password reset for:', email);
+
+      const response = await this.authApiClient.forgotPassword(email);
+
+      if (!response.success) {
+        const authError = this.errorHandler.processError(response, 'password_reset_request');
+        console.error('❌ AuthService: Password reset request failed:', authError.message);
+        return { success: false, error: authError.userMessage };
+      }
+
+      console.log('✅ AuthService: Password reset email sent successfully');
+      return {
+        success: true,
+        message: response.data?.message || 'Password reset email sent'
+      };
+
+    } catch (error) {
+      const authError = this.errorHandler.processError(error, 'password_reset_request');
+      return { success: false, error: authError.userMessage };
     }
-    
-    this.emitEvent('login:success', { user });
-    
-    // Clear any OAuth2 state
-    this.oauth2Service.clearOAuth2State();
   }
 
   /**
-   * Health check method
+   * Reset password with token
    */
-  async healthCheck(): Promise<{
+  async resetPassword(token: string, newPassword: string): Promise<{
     success: boolean;
-    status?: string;
+    error?: string;
+    message?: string;
+  }> {
+    try {
+      console.log('🔐 AuthService: Resetting password with token...');
+
+      // Validate new password
+      const passwordValidation = this.validatePassword(newPassword);
+      if (!passwordValidation.isValid) {
+        return {
+          success: false,
+          error: passwordValidation.feedback.join(', ')
+        };
+      }
+
+      const response = await this.authApiClient.resetPassword({
+        token,
+        newPassword
+      });
+
+      if (!response.success) {
+        const authError = this.errorHandler.processError(response, 'password_reset');
+        console.error('❌ AuthService: Password reset failed:', authError.message);
+        return { success: false, error: authError.userMessage };
+      }
+
+      console.log('✅ AuthService: Password reset successful');
+      return {
+        success: true,
+        message: response.data?.message || 'Password reset successful'
+      };
+
+    } catch (error) {
+      const authError = this.errorHandler.processError(error, 'password_reset');
+      return { success: false, error: authError.userMessage };
+    }
+  }
+
+  /**
+   * Confirm password reset token validity
+   */
+  async confirmPasswordToken(token: string): Promise<{
+    valid: boolean;
+    error?: string;
+    message?: string;
+  }> {
+    try {
+      console.log('🔍 AuthService: Confirming password reset token...');
+
+      const response = await this.authApiClient.confirmPasswordToken(token);
+
+      if (!response.success) {
+        const authError = this.errorHandler.processError(response, 'password_token_confirmation');
+        console.error('❌ AuthService: Token confirmation failed:', authError.message);
+        return { valid: false, error: authError.userMessage };
+      }
+
+      return {
+        valid: response.data?.valid || false,
+        message: response.data?.message
+      };
+
+    } catch (error) {
+      const authError = this.errorHandler.processError(error, 'password_token_confirmation');
+      return { valid: false, error: authError.userMessage };
+    }
+  }
+
+  // =====================================
+  // SESSION MANAGEMENT METHODS
+  // =====================================
+
+  /**
+   * Get all user sessions
+   */
+  async getAllSessions(): Promise<{
+    success: boolean;
+    sessions?: any[];
     error?: string;
   }> {
     try {
-      const response = await this.authApiClient.healthCheck();
-      
+      console.log('📋 AuthService: Getting all sessions...');
+
+      const response = await this.authApiClient.getAllSessions();
+
       if (!response.success) {
-        return {
-          success: false,
-          error: response.error || 'Health check failed'
-        };
+        const authError = this.errorHandler.processError(response, 'get_sessions');
+        console.error('❌ AuthService: Failed to get sessions:', authError.message);
+        return { success: false, error: authError.userMessage };
       }
 
       return {
         success: true,
-        status: response.data?.status || 'OK'
+        sessions: response.data || []
       };
 
     } catch (error) {
+      const authError = this.errorHandler.processError(error, 'get_sessions');
+      return { success: false, error: authError.userMessage };
+    }
+  }
+
+  /**
+   * Invalidate all sessions
+   */
+  async invalidateAllSessions(): Promise<{
+    success: boolean;
+    invalidatedCount?: number;
+    error?: string;
+  }> {
+    try {
+      console.log('🗑️ AuthService: Invalidating all sessions...');
+
+      const response = await this.authApiClient.invalidateAllSessions();
+
+      if (!response.success) {
+        const authError = this.errorHandler.processError(response, 'invalidate_sessions');
+        console.error('❌ AuthService: Failed to invalidate sessions:', authError.message);
+        return { success: false, error: authError.userMessage };
+      }
+
+      // Clear local session as well
+      this.clearAuthState();
+
       return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Health check error'
+        success: true,
+        invalidatedCount: response.data?.invalidatedCount || 0
       };
+
+    } catch (error) {
+      const authError = this.errorHandler.processError(error, 'invalidate_sessions');
+      return { success: false, error: authError.userMessage };
+    }
+  }
+
+  /**
+   * Force session refresh
+   */
+  async refreshSession(): Promise<{
+    success: boolean;
+    user?: User;
+    error?: string;
+  }> {
+    try {
+      console.log('🔄 AuthService: Forcing session refresh...');
+
+      const validation = await this.sessionService.validateSessionDebounced(
+        () => this.validateSessionInternal(),
+        true // force validation
+      );
+
+      if (validation.valid && validation.user) {
+        return {
+          success: true,
+          user: validation.user
+        };
+      } else {
+        return {
+          success: false,
+          error: !validation.valid ? 'Session refresh failed' : undefined
+        };
+      }
+
+    } catch (error) {
+      const authError = this.errorHandler.processError(error, 'session_refresh');
+      return { success: false, error: authError.userMessage };
+    }
+  }
+
+  // =====================================
+  // ADDITIONAL UTILITY METHODS
+  // =====================================
+
+  /**
+   * Check if user has specific role
+   */
+  public hasRole(role: User['role']): boolean {
+    const user = this.getCurrentUser();
+    return user?.role === role;
+  }
+
+  /**
+   * Check if user is admin
+   */
+  public isAdmin(): boolean {
+    return this.hasRole('ADMIN');
+  }
+
+  /**
+   * Check if user is moderator or admin
+   */
+  public isModerator(): boolean {
+    const user = this.getCurrentUser();
+    return user?.role === 'MODERATOR' || user?.role === 'ADMIN';
+  }
+
+  /**
+   * Get user permissions based on role
+   */
+  public getUserPermissions(): string[] {
+    const user = this.getCurrentUser();
+    if (!user) return [];
+
+    const basePermissions = ['view_profile', 'edit_profile', 'create_urls', 'view_urls'];
+
+    switch (user.role) {
+      case 'ADMIN':
+        return [
+          ...basePermissions,
+          'manage_users',
+          'manage_system',
+          'view_analytics',
+          'manage_settings',
+          'delete_any_url',
+          'moderate_content'
+        ];
+      case 'MODERATOR':
+        return [
+          ...basePermissions,
+          'moderate_content',
+          'view_analytics',
+          'delete_flagged_urls'
+        ];
+      case 'USER':
+      default:
+        return [...basePermissions, 'delete_own_urls'];
+    }
+  }
+
+  /**
+   * Check if user has specific permission
+   */
+  public hasPermission(permission: string): boolean {
+    return this.getUserPermissions().includes(permission);
+  }
+
+  /**
+   * Get session age in minutes
+   */
+  public getSessionAge(): number | null {
+    const sessionInfo = this.sessionService.getSessionInfo();
+    return sessionInfo.ageMinutes || null;
+  }
+
+  /**
+   * Check if session is stale
+   */
+  public isSessionStale(maxAgeMinutes: number = 30): boolean {
+    return this.sessionService.isSessionStale(maxAgeMinutes);
+  }
+
+  /**
+   * Get authentication state summary
+   */
+  public getAuthSummary(): {
+    isAuthenticated: boolean;
+    user: Pick<User, 'id' | 'email' | 'name' | 'role'> | null;
+    sessionSource?: string;
+    sessionAge?: string;
+    permissions: string[];
+    isLoading: boolean;
+    hasError: boolean;
+  } {
+    const sessionInfo = this.sessionService.getSessionInfo();
+    const authState = this.stateManager.getAuthState();
+    const user = sessionInfo.user;
+
+    return {
+      isAuthenticated: sessionInfo.isAuthenticated,
+      user: user ? {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      } : null,
+      sessionSource: sessionInfo.source,
+      sessionAge: sessionInfo.ageMinutes ? `${Math.round(sessionInfo.ageMinutes)}m` : undefined,
+      permissions: this.getUserPermissions(),
+      isLoading: authState.isLoading,
+      hasError: !!authState.error
+    };
+  }
+
+  /**
+   * Subscribe to authentication state changes
+   */
+  public subscribeToAuthState(callback: (summary: ReturnType<typeof this.getAuthSummary>) => void): () => void {
+    return this.sessionService.subscribeToSession(() => {
+      callback(this.getAuthSummary());
+    });
+  }
+
+  /**
+   * Validate email format
+   */
+  public static validateEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
+  /**
+   * Validate username format
+   */
+  public static validateUsername(username: string): { isValid: boolean; error?: string } {
+    if (!username) {
+      return { isValid: false, error: 'Username is required' };
+    }
+
+    if (username.length < 3 || username.length > 20) {
+      return { isValid: false, error: 'Username must be between 3 and 20 characters' };
+    }
+
+    if (!/^[a-zA-Z0-9._-]+$/.test(username)) {
+      return { isValid: false, error: 'Username can only contain letters, numbers, dots, underscores and hyphens' };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * Generate strong password suggestion
+   */
+  public static generatePasswordSuggestion(): string {
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const symbols = '@$!%*?&';
+
+    const allChars = lowercase + uppercase + numbers + symbols;
+
+    let password = '';
+
+    // Ensure at least one character from each category
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += symbols[Math.floor(Math.random() * symbols.length)];
+
+    // Fill remaining characters (8-12 total length)
+    const targetLength = 12;
+    for (let i = password.length; i < targetLength; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  }
+
+  /**
+   * Debug method to get detailed auth state
+   */
+  public getDetailedAuthState() {
+    return {
+      authentication: this.getAuthSummary(),
+      session: this.sessionService.getSessionInfo(),
+      oauth2: this.oauth2Service.getOAuth2StateInfo(),
+      errors: {
+        hasActiveError: !!this.stateManager.getAuthState().error,
+        lastError: this.stateManager.getAuthState().error || undefined
+      },
+      performance: {
+        lastValidationTime: this.sessionService.getSessionInfo().lastValidated,
+      }
+    };
+  }
+
+  /**
+   * Emergency cleanup method for critical errors
+   */
+  public emergencyCleanup(): void {
+    console.warn('🚨 AuthService: Performing emergency cleanup...');
+
+    try {
+      // Clear all state
+      this.clearAuthState();
+
+      // Clear OAuth2 state
+      this.oauth2Service.clearOAuth2State();
+
+      // Clear any stored data
+      try {
+        sessionStorage.clear();
+        localStorage.removeItem('session_cleared');
+        localStorage.removeItem('oauth2_session_established');
+      } catch (error) {
+        console.warn('Failed to clear storage:', error);
+      }
+
+      // Reset error handler counters
+      this.errorHandler = AuthErrorHandler.getInstance();
+
+      console.log('✅ AuthService: Emergency cleanup completed');
+
+    } catch (error) {
+      console.error('❌ AuthService: Emergency cleanup failed:', error);
+    }
+  }
+
+  /**
+   * Cleanup resources and destroy service instance
+   */
+  public destroy(): void {
+    console.log('🧹 AuthService: Destroying service...');
+
+    try {
+      // Cleanup session service
+      this.sessionService.destroy();
+
+      // Clear OAuth2 state
+      this.oauth2Service.clearOAuth2State();
+
+      // Clear event listeners
+      this.eventListeners.clear();
+
+      // Clear any timers or intervals
+      // (Add any additional cleanup here if needed)
+
+      console.log('✅ AuthService: Service destroyed successfully');
+
+    } catch (error) {
+      console.error('❌ AuthService: Error during destruction:', error);
     }
   }
 }

@@ -1,5 +1,7 @@
 // src/services/auth/types.ts - COMPLETE TYPE DEFINITIONS WITH EXPORTS
 
+import type { User } from "../../types/user";
+
 /**
  * Registration request DTO matching backend
  */
@@ -33,24 +35,10 @@ export interface LoginRequest {
 }
 
 /**
- * User data structure for auth service
- */
-export interface UserData {
-  id: string;
-  username: string;
-  email: string;
-  organisation?: string;
-  emailVerified: boolean;
-  role: string;
-  createdAt: number;
-  lastLoginAt?: number;
-}
-
-/**
  * Login response from backend
  */
 export interface LoginResponse {
-  user?: UserData;
+  user?: User;
   userId?: string;
   username?: string;
   email?: string;
@@ -95,7 +83,7 @@ export interface ConfirmAccountRequest {
  */
 export interface ConfirmAccountResponse {
   message: string;
-  user?: UserData;
+  user?: User;
 }
 
 /**

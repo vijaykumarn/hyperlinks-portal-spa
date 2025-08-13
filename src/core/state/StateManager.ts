@@ -11,7 +11,7 @@ import type {
   AnalyticsState,
   AuthState
 } from './types';
-import type { UserData } from '../../types/app';
+import type { User } from '../../types/user';
 
 /**
  * Subscription interface for state changes
@@ -529,7 +529,7 @@ export class StateManager {
   /**
    * Get current user
    */
-  public getCurrentUser(): UserData | null {
+  public getCurrentUser(): User | null {
     return this.state.session.user;
   }
 }

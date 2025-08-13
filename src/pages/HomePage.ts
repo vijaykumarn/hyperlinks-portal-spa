@@ -7,20 +7,21 @@ import { SessionService } from '../services/SessionService';
 import { AuthModal } from '../components/auth/AuthModal';
 import { UrlShortenForm } from '../components/forms';
 import { Button } from '../components/ui';
-import type { RegistrationRequest, LoginRequest, AuthModalMode } from '../services/auth/types';
+import type { AuthModalMode } from '../services/auth/types';
+import type { LoginCredentials, RegistrationData } from '../types/user';
 
 export class HomePage implements PageComponent {
   private domManager: DOMManager;
   private eventListeners: Array<() => void> = [];
   private authService: AuthService;
   private sessionService: SessionService;
-  
+
   // Component instances
   private authModal: AuthModal | null = null;
   private urlShortenForm: UrlShortenForm | null = null;
   private loginButton: Button | null = null;
   private registerButton: Button | null = null;
-  
+
   // Component state
   private authModalMode: AuthModalMode = 'closed';
   private shortenResult: { shortCode: string; fullShortUrl: string } | null = null;
@@ -120,7 +121,7 @@ export class HomePage implements PageComponent {
     `;
 
     this.domManager.setContent(html);
-    
+
     // Initialize components after a small delay to ensure DOM is ready
     setTimeout(() => {
       this.initializeComponents();
@@ -134,7 +135,7 @@ export class HomePage implements PageComponent {
 
       // Initialize auth buttons
       this.createAuthButtons();
-      
+
       // Initialize URL Shortening Form
       this.createUrlShortenForm();
 
@@ -143,7 +144,7 @@ export class HomePage implements PageComponent {
 
       // Mount all components
       this.mountComponents();
-      
+
       console.log('✅ HomePage: Components initialized successfully');
     } catch (error) {
       console.error('❌ HomePage: Error initializing components:', error);
@@ -190,8 +191,8 @@ export class HomePage implements PageComponent {
         mode: this.authModalMode,
         onClose: () => this.closeAuthModal(),
         // FIXED: Proper typing for event handlers
-        onLogin: (credentials: LoginRequest) => this.handleLogin(credentials),
-        onRegister: (data: RegistrationRequest) => this.handleRegister(data),
+        onLogin: (credentials: LoginCredentials) => this.handleLogin(credentials),
+        onRegister: (data: RegistrationData) => this.handleRegister(data),
         onGoogleAuth: (mode: 'login' | 'register') => this.handleGoogleAuth(mode),
         onResendVerification: () => this.handleResendVerification(),
         // FIXED: Handle null verification email properly
@@ -360,25 +361,32 @@ export class HomePage implements PageComponent {
     }
   }
 
-  private async handleLogin(credentials: LoginRequest): Promise<void> {
+  private async handleLogin(credentials: LoginCredentials): Promise<void> {
     console.log('🔐 HomePage: Handling login for:', credentials.email);
-    
+
     this.isLoading = true;
     this.updateComponentsLoading();
 
     try {
       const result = await this.authService.login(credentials);
 
-      if (result.success && result.user) {
-        console.log('✅ HomePage: Login successful');
-        // Auth service event listeners will handle UI updates and redirect
-      } else if (result.requiresVerification) {
-        console.log('📧 HomePage: Login requires verification');
-        this.verificationEmail = credentials.email;
-        this.authModalMode = 'verification';
-        this.updateAuthModal();
+      if (result.success) {
+        if ('user' in result && result.user) {
+          console.log('✅ HomePage: Login successful');
+          // Auth service event listeners will handle UI updates and redirect
+        } else {
+          console.log('✅ HomePage: Login successful - no user data returned');
+          // Handle successful login without user data (shouldn't happen for login)
+        }
       } else {
-        throw new Error(result.error || 'Login failed');
+        if (result.requiresVerification) {
+          console.log('📧 HomePage: Login requires verification');
+          this.verificationEmail = credentials.email;
+          this.authModalMode = 'verification';
+          this.updateAuthModal();
+        } else {
+          throw new Error(result.error || 'Login failed');
+        }
       }
     } catch (error) {
       console.error('❌ HomePage: Login failed:', error);
@@ -389,9 +397,9 @@ export class HomePage implements PageComponent {
     }
   }
 
-  private async handleRegister(data: RegistrationRequest): Promise<void> {
+  private async handleRegister(data: RegistrationData): Promise<void> {
     console.log('📝 HomePage: Handling registration for:', data.email);
-    
+
     this.isLoading = true;
     this.updateComponentsLoading();
 
@@ -400,8 +408,8 @@ export class HomePage implements PageComponent {
 
       if (result.success) {
         console.log('✅ HomePage: Registration successful');
-        
-        if (result.verificationRequired) {
+
+        if (result.requiresVerification) {
           this.verificationEmail = data.email;
           this.authModalMode = 'verification';
           this.updateAuthModal();
@@ -424,7 +432,7 @@ export class HomePage implements PageComponent {
 
   private async handleGoogleAuth(mode: 'login' | 'register'): Promise<void> {
     console.log('🔗 HomePage: Handling Google auth for:', mode);
-    
+
     this.isLoading = true;
     this.updateComponentsLoading();
 
@@ -454,7 +462,7 @@ export class HomePage implements PageComponent {
     }
 
     console.log('📧 HomePage: Resending verification email to:', this.verificationEmail);
-    
+
     this.isLoading = true;
     this.updateComponentsLoading();
 
@@ -482,7 +490,7 @@ export class HomePage implements PageComponent {
 
   private async handleUrlShorten(url: string): Promise<{ shortCode: string; fullShortUrl: string }> {
     console.log('🔗 HomePage: Shortening URL:', url);
-    
+
     if (!this.isValidUrl(url)) {
       throw new Error('Please enter a valid URL');
     }
@@ -536,7 +544,7 @@ export class HomePage implements PageComponent {
     if (this.urlShortenForm) {
       this.urlShortenForm.update({ isLoading: this.isLoading });
     }
-    
+
     if (this.authModal) {
       this.authModal.update({ isLoading: this.isLoading });
     }
@@ -554,7 +562,7 @@ export class HomePage implements PageComponent {
   // FIXED: More robust dashboard redirect
   private async redirectToDashboard(): Promise<void> {
     console.log('🎯 HomePage: Redirecting to dashboard...');
-    
+
     try {
       // Get router instance from global app
       const app = (window as any).__APP__?.getInstance?.();
@@ -566,11 +574,11 @@ export class HomePage implements PageComponent {
           return;
         }
       }
-      
+
       // Fallback to window.location if router not available
       console.warn('⚠️ HomePage: Router not available, using window.location');
       window.location.href = '/dashboard';
-      
+
     } catch (error) {
       console.error('❌ HomePage: Error redirecting to dashboard:', error);
       // Last resort fallback
@@ -580,19 +588,19 @@ export class HomePage implements PageComponent {
 
   public cleanup(): void {
     console.log('🧹 HomePage: Cleaning up components...');
-    
+
     try {
       // Cleanup components
       if (this.authModal) {
         this.authModal.unmount();
         this.authModal = null;
       }
-      
+
       if (this.urlShortenForm) {
         this.urlShortenForm.unmount();
         this.urlShortenForm = null;
       }
-      
+
       if (this.loginButton) {
         this.loginButton.unmount();
         this.loginButton = null;
@@ -614,7 +622,7 @@ export class HomePage implements PageComponent {
       this.verificationEmail = null;
 
       console.log('✅ HomePage: Cleanup completed');
-      
+
     } catch (error) {
       console.error('❌ HomePage: Error during cleanup:', error);
     }

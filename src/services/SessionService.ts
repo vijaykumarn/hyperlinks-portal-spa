@@ -1,23 +1,85 @@
-// src/services/SessionService.ts - ENHANCED FOR OAUTH2
+// src/services/SessionService.ts - REFACTORED WITH RACE CONDITION FIX
 
 import { StateManager } from '../core/state/StateManager';
-import type { UserData, ApiResponse } from '../types/app';
+import type { 
+  User, 
+  AuthenticationState, 
+  SessionValidationResult 
+} from '../types/user';
+import type { ApiResponse } from '../types/app';
 
 /**
- * Session management service - HttpOnly cookies with OAuth2 support
+ * Session validation queue to prevent race conditions
+ */
+class SessionValidationQueue {
+  private isValidating = false;
+  private pendingCallbacks: Array<{
+    resolve: (result: SessionValidationResult) => void;
+    reject: (error: Error) => void;
+  }> = [];
+
+  /**
+   * Add validation request to queue
+   */
+  async enqueue(validationFn: () => Promise<SessionValidationResult>): Promise<SessionValidationResult> {
+    return new Promise((resolve, reject) => {
+      this.pendingCallbacks.push({ resolve, reject });
+      
+      if (!this.isValidating) {
+        this.processQueue(validationFn);
+      }
+    });
+  }
+
+  /**
+   * Process validation queue
+   */
+  private async processQueue(validationFn: () => Promise<SessionValidationResult>): Promise<void> {
+    if (this.isValidating) return;
+    
+    this.isValidating = true;
+    
+    try {
+      const result = await validationFn();
+      
+      // Resolve all pending callbacks with the same result
+      this.pendingCallbacks.forEach(({ resolve }) => resolve(result));
+    } catch (error) {
+      // Reject all pending callbacks with the same error
+      this.pendingCallbacks.forEach(({ reject }) => reject(error as Error));
+    } finally {
+      this.pendingCallbacks = [];
+      this.isValidating = false;
+    }
+  }
+
+  /**
+   * Clear queue (for cleanup)
+   */
+  clear(): void {
+    this.pendingCallbacks = [];
+    this.isValidating = false;
+  }
+}
+
+/**
+ * Session management service with race condition prevention
  */
 export class SessionService {
   private static instance: SessionService;
   private stateManager: StateManager;
+  private validationQueue: SessionValidationQueue;
+  private validationDebounceTimer: NodeJS.Timeout | null = null;
+  private lastValidationTimestamp = 0;
+  private readonly VALIDATION_DEBOUNCE_MS = 1000; // 1 second
+  private readonly MIN_VALIDATION_INTERVAL_MS = 5000; // 5 seconds
 
   private constructor() {
     this.stateManager = StateManager.getInstance();
+    this.validationQueue = new SessionValidationQueue();
     this.setupStorageListener();
   }
 
-  /**
-   * Singleton instance
-   */
   public static getInstance(): SessionService {
     if (!SessionService.instance) {
       SessionService.instance = new SessionService();
@@ -31,12 +93,10 @@ export class SessionService {
   private setupStorageListener(): void {
     window.addEventListener('storage', (event) => {
       if (event.key === 'session_cleared') {
-        // Session was cleared in another tab
-        console.log('🔄 Session cleared in another tab');
+        console.log('🔄 SessionService: Session cleared in another tab');
         this.clearSessionState();
       } else if (event.key === 'oauth2_session_established') {
-        // OAuth2 session was established in another tab
-        console.log('🔄 OAuth2 session established in another tab');
+        console.log('🔄 SessionService: OAuth2 session established in another tab');
         this.handleCrossTabOAuth2Session(event.newValue);
       }
     });
@@ -50,7 +110,7 @@ export class SessionService {
       try {
         const user = JSON.parse(userData);
         console.log('🔄 SessionService: Syncing OAuth2 session from another tab:', user.email);
-        this.setSession(user, false); // Don't notify other tabs to avoid loop
+        this.setSession(user, 'oauth2', false);
       } catch (error) {
         console.warn('Failed to parse cross-tab OAuth2 session data:', error);
       }
@@ -58,42 +118,55 @@ export class SessionService {
   }
 
   /**
-   * Set user session (after successful login) - ENHANCED FOR OAUTH2
+   * Set user session with source tracking
    */
-  public setSession(user: UserData, notifyOtherTabs: boolean = true): void {
+  public setSession(
+    user: User, 
+    source: AuthenticationState['sessionSource'] = 'password',
+    notifyOtherTabs: boolean = true
+  ): void {
+    const authState: AuthenticationState = {
+      isAuthenticated: true,
+      user,
+      sessionValidatedAt: Date.now(),
+      sessionSource: source
+    };
+
     this.stateManager.dispatch({
       type: 'SESSION_SET',
       payload: { user, isAuthenticated: true }
     });
 
-    // Store minimal session info for cross-tab sync and persistence
-    try {
-      const sessionData = {
-        user,
-        timestamp: Date.now(),
-        source: 'oauth2' // Track that this came from OAuth2
-      };
-      
-      sessionStorage.setItem('session', JSON.stringify(sessionData));
-      
-      // Notify other tabs if this is a new OAuth2 session
-      if (notifyOtherTabs) {
+    // Store session data with metadata
+    this.storeSessionData(authState);
+
+    // Notify other tabs if this is a new session
+    if (notifyOtherTabs && source === 'oauth2') {
+      try {
         localStorage.setItem('oauth2_session_established', JSON.stringify(user));
         setTimeout(() => localStorage.removeItem('oauth2_session_established'), 1000);
+      } catch (error) {
+        console.warn('Failed to notify other tabs:', error);
       }
-      
-    } catch (error) {
-      console.warn('Failed to store session data:', error);
     }
 
-    console.log('👤 Session set for user:', user.email);
+    console.log(`👤 SessionService: Session set for user: ${user.email} (source: ${source})`);
   }
 
   /**
-   * Clear session (logout or auth failure)
+   * Clear session with comprehensive cleanup
    */
   public clearSession(): void {
     console.log('🔒 SessionService: Clearing session...');
+    
+    // Clear validation queue
+    this.validationQueue.clear();
+    
+    // Clear debounce timer
+    if (this.validationDebounceTimer) {
+      clearTimeout(this.validationDebounceTimer);
+      this.validationDebounceTimer = null;
+    }
     
     // Clear state
     this.clearSessionState();
@@ -106,15 +179,136 @@ export class SessionService {
       console.warn('Failed to notify other tabs:', error);
     }
 
-    // Clear any OAuth2 related data
+    // Clear session storage
+    this.clearStoredSessionData();
+
+    console.log('🔒 SessionService: Session cleared successfully');
+  }
+
+  /**
+   * Debounced session validation to prevent race conditions
+   */
+  public async validateSessionDebounced(
+    validationFn: () => Promise<SessionValidationResult>,
+    force: boolean = false
+  ): Promise<SessionValidationResult> {
+    // Check if we need to validate at all
+    if (!force && !this.shouldValidateSession()) {
+      const currentUser = this.getCurrentUser();
+      if (currentUser) {
+        return { valid: true, user: currentUser };
+      }
+    }
+
+    // Clear existing debounce timer
+    if (this.validationDebounceTimer) {
+      clearTimeout(this.validationDebounceTimer);
+      this.validationDebounceTimer = null;
+    }
+
+    // Return queued validation
+    return new Promise((resolve, reject) => {
+      this.validationDebounceTimer = setTimeout(async () => {
+        try {
+          const result = await this.validationQueue.enqueue(validationFn);
+          this.lastValidationTimestamp = Date.now();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      }, this.VALIDATION_DEBOUNCE_MS);
+    });
+  }
+
+  /**
+   * Check if session should be validated
+   */
+  private shouldValidateSession(): boolean {
+    const now = Date.now();
+    const timeSinceLastValidation = now - this.lastValidationTimestamp;
+    
+    return timeSinceLastValidation > this.MIN_VALIDATION_INTERVAL_MS;
+  }
+
+  /**
+   * Store session data in sessionStorage with metadata
+   */
+  private storeSessionData(authState: AuthenticationState): void {
     try {
+      const sessionData = {
+        user: authState.user,
+        sessionSource: authState.sessionSource,
+        timestamp: authState.sessionValidatedAt,
+        version: '1.0' // For future migration compatibility
+      };
+      
+      sessionStorage.setItem('session', JSON.stringify(sessionData));
+    } catch (error) {
+      console.warn('Failed to store session data:', error);
+    }
+  }
+
+  /**
+   * Load persisted session data with validation
+   */
+  public loadPersistedSession(): boolean {
+    try {
+      const sessionData = sessionStorage.getItem('session');
+      if (!sessionData) {
+        return false;
+      }
+
+      const session = JSON.parse(sessionData);
+      if (!this.isValidSessionData(session)) {
+        console.warn('Invalid session data format, clearing...');
+        this.clearStoredSessionData();
+        return false;
+      }
+
+      // Check if session is not too old
+      const maxAge = session.sessionSource === 'oauth2' ? 24 : 12; // hours
+      const ageHours = (Date.now() - session.timestamp) / (1000 * 60 * 60);
+      
+      if (ageHours > maxAge) {
+        console.log('⏰ SessionService: Persisted session expired, removing');
+        this.clearStoredSessionData();
+        return false;
+      }
+
+      console.log(`🔄 SessionService: Loading persisted ${session.sessionSource} session for:`, session.user.email);
+      this.setSession(session.user, session.sessionSource, false);
+      return true;
+
+    } catch (error) {
+      console.warn('Failed to load persisted session:', error);
+      this.clearStoredSessionData();
+      return false;
+    }
+  }
+
+  /**
+   * Validate session data structure
+   */
+  private isValidSessionData(session: any): boolean {
+    return session &&
+           session.user &&
+           typeof session.user.id === 'string' &&
+           typeof session.user.email === 'string' &&
+           typeof session.timestamp === 'number' &&
+           typeof session.sessionSource === 'string';
+  }
+
+  /**
+   * Clear stored session data
+   */
+  private clearStoredSessionData(): void {
+    try {
+      sessionStorage.removeItem('session');
       sessionStorage.removeItem('oauth2_state');
       sessionStorage.removeItem('oauth2_processed');
     } catch (error) {
-      console.warn('Failed to clear OAuth2 data:', error);
+      console.warn('Failed to clear stored session data:', error);
     }
-
-    console.log('🔒 SessionService: Session cleared');
   }
 
   /**
@@ -122,35 +316,12 @@ export class SessionService {
    */
   private clearSessionState(): void {
     this.stateManager.dispatch({ type: 'SESSION_CLEAR' });
-    
-    // Clear session storage
-    try {
-      sessionStorage.removeItem('session');
-    } catch (error) {
-      console.warn('Failed to clear session storage:', error);
-    }
-
-    // Clear user-specific data
     this.stateManager.dispatch({ type: 'URLS_SET_USER_URLS', payload: [] });
     this.stateManager.dispatch({ type: 'ANALYTICS_SET_DATA', payload: null });
   }
 
   /**
-   * Check if user is currently authenticated
-   */
-  public isAuthenticated(): boolean {
-    return this.stateManager.isAuthenticated();
-  }
-
-  /**
-   * Get current user data
-   */
-  public getCurrentUser(): UserData | null {
-    return this.stateManager.getCurrentUser();
-  }
-
-  /**
-   * Update session timestamp (called on API interactions)
+   * Update session timestamp
    */
   public updateTimestamp(): void {
     if (this.isAuthenticated()) {
@@ -171,18 +342,16 @@ export class SessionService {
   }
 
   /**
-   * Handle authentication errors (401/403) - ENHANCED
+   * Handle authentication errors with improved logic
    */
   public handleAuthError(error: { status: number; message?: string }): void {
     if (error.status === 401 || error.status === 403) {
-      console.log('🔒 Authentication error - clearing session');
+      console.log('🔒 SessionService: Authentication error - clearing session');
       
       const wasAuthenticated = this.isAuthenticated();
       this.clearSession();
       
-      // Only show notification and redirect if user was previously authenticated
       if (wasAuthenticated) {
-        // Add notification
         this.stateManager.dispatch({
           type: 'UI_ADD_NOTIFICATION',
           payload: {
@@ -196,7 +365,6 @@ export class SessionService {
         // Redirect to home if on protected route
         const currentPath = window.location.pathname;
         if (currentPath.startsWith('/dashboard')) {
-          // Use a small delay to ensure state is updated
           setTimeout(() => {
             window.history.replaceState(null, '', '/');
             window.dispatchEvent(new PopStateEvent('popstate'));
@@ -207,49 +375,42 @@ export class SessionService {
   }
 
   /**
-   * Load session from storage on app start - ENHANCED FOR OAUTH2
+   * Process API response for session updates
    */
-  public loadPersistedSession(): boolean {
-    try {
-      const sessionData = sessionStorage.getItem('session');
-      if (sessionData) {
-        const session = JSON.parse(sessionData);
-        if (session.user && session.timestamp) {
-          // Check if session is not too old (24 hours for OAuth2 sessions)
-          const maxAge = session.source === 'oauth2' ? 24 : 12; // OAuth2 sessions last longer
-          const ageHours = (Date.now() - session.timestamp) / (1000 * 60 * 60);
-          
-          if (ageHours < maxAge) {
-            console.log(`🔄 SessionService: Loading persisted ${session.source || 'regular'} session for:`, session.user.email);
-            this.setSession(session.user, false); // Don't notify other tabs during load
-            return true;
-          } else {
-            // Session expired
-            console.log('⏰ SessionService: Persisted session expired, removing');
-            sessionStorage.removeItem('session');
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load persisted session:', error);
-      sessionStorage.removeItem('session');
+  public processApiResponse<T>(response: ApiResponse<T> & { status?: number }): void {
+    if (response.success && this.isAuthenticated()) {
+      this.updateTimestamp();
     }
-    return false;
+
+    if (!response.success && response.error) {
+      if (response.error.includes('401') || response.error.includes('403') || 
+          response.status === 401 || response.status === 403) {
+        this.handleAuthError({
+          status: response.status || (response.error.includes('401') ? 401 : 403),
+          message: response.error
+        });
+      }
+    }
   }
 
-  /**
-   * Get session info for debugging
-   */
+  // Public getters
+  public isAuthenticated(): boolean {
+    return this.stateManager.isAuthenticated();
+  }
+
+  public getCurrentUser(): User | null {
+    return this.stateManager.getCurrentUser();
+  }
+
   public getSessionInfo(): {
     isAuthenticated: boolean;
-    user: UserData | null;
+    user: User | null;
     lastValidated: number;
     source?: string;
     ageMinutes?: number;
   } {
     const sessionState = this.stateManager.getSessionState();
     
-    // Get additional info from stored session
     let source: string | undefined;
     let ageMinutes: number | undefined;
     
@@ -257,7 +418,7 @@ export class SessionService {
       const stored = sessionStorage.getItem('session');
       if (stored) {
         const sessionData = JSON.parse(stored);
-        source = sessionData.source;
+        source = sessionData.sessionSource;
         ageMinutes = (Date.now() - sessionData.timestamp) / (1000 * 60);
       }
     } catch (error) {
@@ -273,12 +434,17 @@ export class SessionService {
     };
   }
 
-  /**
-   * Subscribe to session changes
-   */
+  public isSessionStale(maxAgeMinutes: number = 30): boolean {
+    const sessionState = this.stateManager.getSessionState();
+    if (!sessionState.isAuthenticated) return false;
+    
+    const ageMinutes = (Date.now() - sessionState.lastValidated) / (1000 * 60);
+    return ageMinutes > maxAgeMinutes;
+  }
+
   public subscribeToSession(callback: (session: {
     isAuthenticated: boolean;
-    user: UserData | null;
+    user: User | null;
   }) => void): () => void {
     return this.stateManager.subscribe(
       (state) => ({
@@ -290,96 +456,14 @@ export class SessionService {
   }
 
   /**
-   * Check if session is stale (for UI warnings)
+   * Cleanup resources (called on app destruction)
    */
-  public isSessionStale(maxAgeMinutes: number = 30): boolean {
-    const sessionState = this.stateManager.getSessionState();
-    if (!sessionState.isAuthenticated) return false;
+  public destroy(): void {
+    this.validationQueue.clear();
     
-    const ageMinutes = (Date.now() - sessionState.lastValidated) / (1000 * 60);
-    return ageMinutes > maxAgeMinutes;
-  }
-
-  /**
-   * Process API response that might contain user data - ENHANCED
-   */
-  public processApiResponse<T>(response: ApiResponse<T>): void {
-    // Update timestamp on successful API calls
-    if (response.success && this.isAuthenticated()) {
-      this.updateTimestamp();
+    if (this.validationDebounceTimer) {
+      clearTimeout(this.validationDebounceTimer);
+      this.validationDebounceTimer = null;
     }
-
-    // If response contains user data, update session
-    if (response.success && response.data && typeof response.data === 'object') {
-      const data = response.data as any;
-      if (data.user && data.user.id) {
-        const currentUser = this.getCurrentUser();
-        // Only update if this is new user data or user data changed
-        if (!currentUser || currentUser.id !== data.user.id || currentUser.email !== data.user.email) {
-          console.log('🔄 SessionService: Updating session from API response');
-          this.setSession(data.user);
-        }
-      }
-    }
-
-    // Handle authentication errors
-    if (!response.success && response.error) {
-      if (response.error.includes('401') || response.error.includes('403') || 
-          response.status === 401 || response.status === 403) {
-        this.handleAuthError({
-          status: response.status || (response.error.includes('401') ? 401 : 403),
-          message: response.error
-        });
-      }
-    }
-  }
-
-  /**
-   * Refresh session (useful for OAuth2 flows)
-   */
-  public async refreshSession(): Promise<{ success: boolean; user?: UserData; error?: string }> {
-    try {
-      console.log('🔄 SessionService: Refreshing session...');
-      
-      // This would typically call a session validation endpoint
-      // For now, we'll just check if we have a valid stored session
-      const hasValidSession = this.loadPersistedSession();
-      
-      if (hasValidSession) {
-        const user = this.getCurrentUser();
-        return {
-          success: true,
-          user: user || undefined
-        };
-      } else {
-        return {
-          success: false,
-          error: 'No valid session found'
-        };
-      }
-      
-    } catch (error) {
-      console.error('❌ SessionService: Session refresh error:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Session refresh failed'
-      };
-    }
-  }
-
-  /**
-   * Check if this is likely an OAuth2 session
-   */
-  public isOAuth2Session(): boolean {
-    try {
-      const stored = sessionStorage.getItem('session');
-      if (stored) {
-        const sessionData = JSON.parse(stored);
-        return sessionData.source === 'oauth2';
-      }
-    } catch (error) {
-      // Ignore parsing errors
-    }
-    return false;
   }
 }
