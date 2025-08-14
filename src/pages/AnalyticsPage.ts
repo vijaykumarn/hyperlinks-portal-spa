@@ -33,8 +33,11 @@ export class AnalyticsPage implements PageComponent {
     const backBtn = document.getElementById('back-btn');
     if (backBtn) {
       backBtn.addEventListener('click', () => {
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) router.push('/dashboard');
+        const app = (window as any).__APP__;
+        if (app) {
+          const router = app.getRouter();
+          if (router) router.push('/dashboard');
+        }
       });
     }
   }
@@ -74,8 +77,11 @@ export class SettingsPage implements PageComponent {
     const backBtn = document.getElementById('back-btn');
     if (backBtn) {
       backBtn.addEventListener('click', () => {
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) router.push('/dashboard');
+        const app = (window as any).__APP__;
+        if (app) {
+          const router = app.getRouter();
+          if (router) router.push('/dashboard');
+        }
       });
     }
   }
@@ -114,8 +120,11 @@ export class NotFoundPage implements PageComponent {
     const homeBtn = document.getElementById('home-btn');
     if (homeBtn) {
       homeBtn.addEventListener('click', () => {
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) router.push('/');
+        const app = (window as any).__APP__;
+        if (app) {
+          const router = app.getRouter();
+          if (router) router.push('/');
+        }
       });
     }
   }

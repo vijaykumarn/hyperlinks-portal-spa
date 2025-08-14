@@ -28,10 +28,13 @@ export class DashboardPage implements PageComponent {
   public async beforeEnter(_context: RouteContext): Promise<boolean> {
     if (!this.sessionService.isAuthenticated()) {
       console.log('🚫 DashboardPage: User not authenticated, redirecting to /');
-      const router = (window as any).__APP__?.getInstance()?.getRouter();
-      if (router) {
-        router.replace('/');
-        return false;
+      const app = (window as any).__APP__;
+      if (app) {
+        const router = app.getRouter();
+        if (router) {
+          router.replace('/');
+          return false;
+        }
       }
     }
     return true;
@@ -255,8 +258,13 @@ export class DashboardPage implements PageComponent {
     const urlsBtn = document.getElementById('urls-btn');
     if (urlsBtn) {
       const listener = this.domManager.addEventListener(urlsBtn, 'click', () => {
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) router.push('/dashboard/urls');
+        const app = (window as any).__APP__;
+        if (app) {
+          const router = app.getRouter();
+          if (router) {
+            router.push('/dashboard/urls');
+          }
+        }
       });
       this.eventListeners.push(listener);
     }
@@ -264,8 +272,13 @@ export class DashboardPage implements PageComponent {
     const analyticsBtn = document.getElementById('analytics-btn');
     if (analyticsBtn) {
       const listener = this.domManager.addEventListener(analyticsBtn, 'click', () => {
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) router.push('/dashboard/analytics');
+        const app = (window as any).__APP__;
+        if (app) {
+          const router = app.getRouter();
+          if (router) {
+            router.push('/dashboard/analytics');
+          }
+        }
       });
       this.eventListeners.push(listener);
     }
@@ -273,8 +286,13 @@ export class DashboardPage implements PageComponent {
     const settingsBtn = document.getElementById('settings-btn');
     if (settingsBtn) {
       const listener = this.domManager.addEventListener(settingsBtn, 'click', () => {
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) router.push('/dashboard/settings');
+        const app = (window as any).__APP__;
+        if (app) {
+          const router = app.getRouter();
+          if (router) {
+            router.push('/dashboard/settings');
+          }
+        }
       });
       this.eventListeners.push(listener);
     }
@@ -302,9 +320,14 @@ export class DashboardPage implements PageComponent {
       console.log('✅ Local session cleared');
       
       // Redirect to home page
-      const router = (window as any).__APP__?.getInstance()?.getRouter();
-      if (router) {
-        router.replace('/');
+      const app = (window as any).__APP__;
+      if (app) {
+        const router = app.getRouter();
+        if (router) {
+          router.replace('/');
+        } else {
+          window.location.href = '/';
+        }
       } else {
         window.location.href = '/';
       }

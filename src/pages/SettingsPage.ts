@@ -33,8 +33,11 @@ export class SettingsPage implements PageComponent {
     const backBtn = document.getElementById('back-btn');
     if (backBtn) {
       backBtn.addEventListener('click', () => {
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) router.push('/dashboard');
+        const app = (window as any).__APP__;
+        if (app) {
+          const router = app.getRouter();
+          if (router) router.push('/dashboard');
+        }
       });
     }
   }

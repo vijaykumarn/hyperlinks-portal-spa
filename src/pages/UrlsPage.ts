@@ -85,10 +85,13 @@ export class UrlsPage implements PageComponent {
 
   public async beforeEnter(_context: RouteContext): Promise<boolean> {
     if (!this.sessionService.isAuthenticated()) {
-      const router = (window as any).__APP__?.getInstance()?.getRouter();
-      if (router) {
-        router.replace('/');
-        return false;
+      const app = (window as any).__APP__;
+      if (app) {
+        const router = app.getRouter();
+        if (router) {
+          router.replace('/');
+          return false;
+        }
       }
     }
     return true;
@@ -158,8 +161,11 @@ export class UrlsPage implements PageComponent {
     const backBtn = document.getElementById('back-btn');
     if (backBtn) {
       const listener = this.domManager.addEventListener(backBtn, 'click', () => {
-        const router = (window as any).__APP__?.getInstance()?.getRouter();
-        if (router) router.push('/dashboard');
+        const app = (window as any).__APP__;
+        if (app) {
+          const router = app.getRouter();
+          if (router) router.push('/dashboard');
+        }
       });
       this.eventListeners.push(listener);
     }

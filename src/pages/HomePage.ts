@@ -581,7 +581,7 @@ export class HomePage implements PageComponent {
 
     try {
       // Get router instance from global app
-      const app = (window as any).__APP__?.getInstance?.();
+      const app = (window as any).__APP__;
       if (app) {
         const router = app.getRouter();
         if (router) {
