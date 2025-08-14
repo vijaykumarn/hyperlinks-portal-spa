@@ -1,5 +1,4 @@
-// src/components/ui/Input.ts - CONSERVATIVE ENHANCEMENT
-// Keeps all existing functionality while improving reliability
+// src/components/ui/Input.ts - ENHANCED VERSION (MAINTAINS ALL EXISTING FUNCTIONALITY)
 
 import { type ComponentProps, Component } from "../base/Component";
 
@@ -12,7 +11,7 @@ export interface InputProps extends ComponentProps {
   id?: string;
   label?: string;
   error?: string;
-  value?: string; // NEW: Allow initial value
+  value?: string; // Allow initial value
   onChange?: (value: string, event: Event) => void;
   onBlur?: (event: FocusEvent) => void;
   onFocus?: (event: FocusEvent) => void;
@@ -42,7 +41,7 @@ export class Input extends Component<InputProps> {
     
     if (!this.inputElement) {
       console.warn('❌ Input element not found for:', this.props.name);
-      // Retry with longer delay
+      // Retry with longer delay using enhanced setTimeout
       this.setTimeout(() => {
         this.initializeInput();
       }, 100);
@@ -63,7 +62,7 @@ export class Input extends Component<InputProps> {
   }
 
   /**
-   * ENHANCED: More reliable event binding
+   * ENHANCED: More reliable event binding with enhanced addEventListener
    */
   private bindEvents(): void {
     if (!this.inputElement) return;
@@ -81,7 +80,7 @@ export class Input extends Component<InputProps> {
       });
     });
 
-    // Handle paste events with delay
+    // Handle paste events with delay using enhanced setTimeout
     pasteEvents.forEach(eventType => {
       this.addEventListener(this.inputElement!, eventType, (e) => {
         this.setTimeout(() => {
@@ -190,7 +189,7 @@ export class Input extends Component<InputProps> {
     if (this.inputElement) {
       this.inputElement.focus();
     } else {
-      // Retry after initialization
+      // Retry after initialization using enhanced setTimeout
       this.setTimeout(() => {
         if (this.inputElement) {
           this.inputElement.focus();
@@ -200,7 +199,7 @@ export class Input extends Component<InputProps> {
   }
 
   /**
-   * ENHANCED: Clear any error styling
+   * NEW: Clear any error styling
    */
   public clearError(): void {
     if (this.inputElement) {
@@ -209,7 +208,7 @@ export class Input extends Component<InputProps> {
   }
 
   /**
-   * ENHANCED: Set error styling
+   * NEW: Set error styling
    */
   public setError(error: string): void {
     if (this.inputElement) {
