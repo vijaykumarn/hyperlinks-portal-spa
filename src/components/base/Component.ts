@@ -1,4 +1,6 @@
-// src/components/base/Component.ts - FIXED VERSION
+// src/components/base/Component.ts - ENHANCED VERSION (BACKWARD COMPATIBLE)
+
+import { CleanupManager } from '../../core/cleanup/CleanupManager';
 
 export interface ComponentProps {
   [key: string]: any;
@@ -15,7 +17,8 @@ export interface ComponentOptions {
 }
 
 /**
- * Base Component class - Foundation for all UI components
+ * Enhanced Component base class - FULLY BACKWARD COMPATIBLE
+ * Existing components will continue to work without changes
  */
 export abstract class Component<P extends ComponentProps = ComponentProps, S extends ComponentState = ComponentState> {
   protected props: P;
@@ -25,6 +28,9 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
   protected isMountedFlag = false;
   protected eventListeners: Array<() => void> = [];
   protected childComponents: Component[] = [];
+  
+  // NEW: Optional cleanup manager (doesn't break existing code)
+  protected cleanupManager: CleanupManager | null = null;
 
   constructor(options: ComponentOptions = {}) {
     this.props = (options.props || {}) as P;
@@ -37,15 +43,30 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
         this.el = options.el;
       }
     }
+
+    // NEW: Initialize cleanup manager (optional feature)
+    this.initializeCleanupManager();
   }
 
   /**
-   * Abstract render method - must be implemented by subclasses
+   * NEW: Initialize cleanup manager (optional)
+   */
+  private initializeCleanupManager(): void {
+    try {
+      this.cleanupManager = new CleanupManager();
+    } catch (error) {
+      console.warn('Component: Failed to initialize cleanup manager:', error);
+      this.cleanupManager = null;
+    }
+  }
+
+  /**
+   * Abstract render method - unchanged
    */
   abstract render(): string;
 
   /**
-   * Mount component to DOM - FIXED VERSION
+   * Mount component - ENHANCED but backward compatible
    */
   public mount(container?: HTMLElement | string): this {
     if (this.isMountedFlag) {
@@ -58,33 +79,22 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
       throw new Error('Cannot mount component: container not found');
     }
 
-    // Store container reference
     this.container = target;
-
-    // Call beforeMount hook
     this.beforeMount();
 
-    // Render and set content
     const html = this.render();
     target.innerHTML = html;
-    
-    // The component element is the content we just added
     this.el = target.firstElementChild as HTMLElement || target;
 
-    // Mark as mounted BEFORE setting up event listeners
     this.isMountedFlag = true;
-
-    // Setup event listeners AFTER marking as mounted
     this.setupEventListeners();
-
-    // Call mounted hook
     this.onMounted();
 
     return this;
   }
 
   /**
-   * Update component with new props - FIXED VERSION
+   * Update component - ENHANCED but backward compatible
    */
   public update(newProps: Partial<P>): this {
     if (!this.isMountedFlag || !this.container) {
@@ -92,90 +102,84 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
       return this;
     }
 
-    // Merge new props
     this.props = { ...this.props, ...newProps };
-
-    // Call beforeUpdate hook
     this.beforeUpdate();
 
-    // Cleanup current event listeners
-    this.cleanup();
+    // Use enhanced cleanup if available, fallback to existing method
+    if (this.cleanupManager) {
+      this.cleanupManager.cleanupByType('event');
+    } else {
+      this.cleanup(); // Existing cleanup method
+    }
 
-    // Re-render
     const html = this.render();
     this.container.innerHTML = html;
-    
-    // Update element reference
     this.el = this.container.firstElementChild as HTMLElement || this.container;
 
-    // Re-setup event listeners
     this.setupEventListeners();
-
-    // Call updated hook
     this.onUpdated();
 
     return this;
   }
 
   /**
-   * Set component state and trigger re-render
+   * Set component state - unchanged
    */
   protected setState(newState: Partial<S>): void {
     this.state = { ...this.state, ...newState };
   }
 
   /**
- * Update component state without triggering re-render
- */
-protected setStateQuiet(newState: Partial<S>): void {
-  this.state = { ...this.state, ...newState };
-}
-
-/**
- * Force update component with current props and state
- */
-protected forceUpdate(): void {
-  if (this.isMountedFlag) {
-    this.update(this.props);
+   * Set state without re-render - unchanged
+   */
+  protected setStateQuiet(newState: Partial<S>): void {
+    this.state = { ...this.state, ...newState };
   }
-}
 
   /**
-   * Unmount component from DOM
+   * Force update - unchanged
+   */
+  protected forceUpdate(): void {
+    if (this.isMountedFlag) {
+      this.update(this.props);
+    }
+  }
+
+  /**
+   * Unmount component - ENHANCED but backward compatible
    */
   public unmount(): this {
     if (!this.isMountedFlag) {
       return this;
     }
 
-    // Call beforeUnmount hook
     this.beforeUnmount();
 
-    // Cleanup event listeners
-    this.cleanup();
+    // Use enhanced cleanup if available, fallback to existing method
+    if (this.cleanupManager) {
+      this.cleanupManager.cleanupAll();
+    } else {
+      this.cleanup(); // Existing cleanup method
+    }
 
-    // Unmount child components
     this.childComponents.forEach(child => child.unmount());
     this.childComponents = [];
 
-    // Clear container content
     if (this.container) {
       this.container.innerHTML = '';
     }
 
-    // Mark as unmounted
     this.isMountedFlag = false;
     this.el = null;
     this.container = null;
 
-    // Call unmounted hook
     this.onUnmounted();
 
     return this;
   }
 
   /**
-   * Add event listener with automatic cleanup - FIXED WITH PROPER OVERLOADS
+   * ENHANCED: Add event listener with automatic cleanup
    */
   protected addEventListener<K extends keyof HTMLElementEventMap>(
     element: HTMLElement,
@@ -204,25 +208,56 @@ protected forceUpdate(): void {
     listener: EventListener,
     options?: boolean | AddEventListenerOptions
   ): void {
+    // Try enhanced cleanup first, fallback to existing method
+    if (this.cleanupManager) {
+      this.cleanupManager.register(() => {
+        element.removeEventListener(type, listener, options);
+      }, 'event');
+    } else {
+      // Existing method - unchanged for backward compatibility
+      this.eventListeners.push(() => {
+        element.removeEventListener(type, listener, options);
+      });
+    }
+
     element.addEventListener(type, listener, options);
-    
-    // Store cleanup function
-    this.eventListeners.push(() => {
-      element.removeEventListener(type, listener, options);
-    });
   }
 
   /**
-   * Find element within component - FIXED TO SEARCH IN CONTAINER
+   * NEW: Enhanced setTimeout with automatic cleanup
+   */
+  protected setTimeout(callback: () => void, delay: number): void {
+    if (this.cleanupManager) {
+      this.cleanupManager.setTimeout(callback, delay);
+    } else {
+      // Fallback for components not using cleanup manager
+      const timerId = window.setTimeout(callback, delay);
+      this.eventListeners.push(() => clearTimeout(timerId));
+    }
+  }
+
+  /**
+   * NEW: Enhanced setInterval with automatic cleanup
+   */
+  protected setInterval(callback: () => void, delay: number): void {
+    if (this.cleanupManager) {
+      this.cleanupManager.setInterval(callback, delay);
+    } else {
+      // Fallback for components not using cleanup manager
+      const intervalId = window.setInterval(callback, delay);
+      this.eventListeners.push(() => clearInterval(intervalId));
+    }
+  }
+
+  /**
+   * Find element within component - unchanged
    */
   protected querySelector<T extends HTMLElement>(selector: string): T | null {
-    // First try to find in the component element
     if (this.el) {
       const result = this.el.querySelector<T>(selector);
       if (result) return result;
     }
     
-    // Fallback to searching in container
     if (this.container) {
       return this.container.querySelector<T>(selector);
     }
@@ -231,7 +266,7 @@ protected forceUpdate(): void {
   }
 
   /**
-   * Find all elements within component
+   * Find all elements within component - unchanged
    */
   protected querySelectorAll<T extends HTMLElement>(selector: string): NodeListOf<T> {
     if (this.container) {
@@ -241,22 +276,28 @@ protected forceUpdate(): void {
   }
 
   /**
-   * Add child component
+   * Add child component - unchanged
    */
   protected addChildComponent(component: Component): void {
     this.childComponents.push(component);
   }
 
   /**
-   * Cleanup event listeners
+   * Cleanup event listeners - ENHANCED but maintains existing behavior
    */
   protected cleanup(): void {
+    // Enhanced cleanup if available
+    if (this.cleanupManager) {
+      this.cleanupManager.cleanupByType('event');
+    }
+    
+    // Always run existing cleanup for backward compatibility
     this.eventListeners.forEach(cleanup => cleanup());
     this.eventListeners = [];
   }
 
   /**
-   * Resolve container element
+   * Resolve container element - unchanged
    */
   private resolveContainer(container?: HTMLElement | string): HTMLElement | null {
     if (!container) {
@@ -270,7 +311,7 @@ protected forceUpdate(): void {
     return container;
   }
 
-  // Lifecycle hooks - can be overridden by subclasses
+  // Lifecycle hooks - unchanged
   protected beforeMount(): void {}
   protected onMounted(): void {}
   protected beforeUpdate(): void {}
@@ -278,10 +319,10 @@ protected forceUpdate(): void {
   protected beforeUnmount(): void {}
   protected onUnmounted(): void {}
 
-  // Abstract method for setting up event listeners
+  // Abstract method - unchanged
   protected abstract setupEventListeners(): void;
 
-  // Getters
+  // Getters - unchanged
   public get isMounted(): boolean {
     return this.isMountedFlag;
   }
@@ -296,5 +337,12 @@ protected forceUpdate(): void {
 
   public getState(): Readonly<S> {
     return { ...this.state };
+  }
+
+  /**
+   * NEW: Get cleanup statistics (for debugging)
+   */
+  public getCleanupStats(): any {
+    return this.cleanupManager?.getStats() || { note: 'Cleanup manager not available' };
   }
 }

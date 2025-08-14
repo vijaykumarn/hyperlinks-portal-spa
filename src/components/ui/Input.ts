@@ -1,4 +1,5 @@
-// src/components/ui/Input.ts - FINAL WORKING VERSION
+// src/components/ui/Input.ts - CONSERVATIVE ENHANCEMENT
+// Keeps all existing functionality while improving reliability
 
 import { type ComponentProps, Component } from "../base/Component";
 
@@ -11,6 +12,7 @@ export interface InputProps extends ComponentProps {
   id?: string;
   label?: string;
   error?: string;
+  value?: string; // NEW: Allow initial value
   onChange?: (value: string, event: Event) => void;
   onBlur?: (event: FocusEvent) => void;
   onFocus?: (event: FocusEvent) => void;
@@ -19,128 +21,202 @@ export interface InputProps extends ComponentProps {
 export class Input extends Component<InputProps> {
   private currentValue: string = '';
   private inputElement: HTMLInputElement | null = null;
+  private isInitialized = false;
 
   protected setupEventListeners(): void {
-    // CRITICAL: Find the input element first
+    // Use enhanced timing for better reliability
+    this.setTimeout(() => {
+      this.initializeInput();
+    }, 50);
+  }
+
+  /**
+   * ENHANCED: Robust input initialization
+   */
+  private initializeInput(): void {
+    if (this.isInitialized) {
+      return; // Prevent double initialization
+    }
+
     this.inputElement = this.querySelector<HTMLInputElement>('input');
     
     if (!this.inputElement) {
-      console.error('❌ Input element not found for:', this.props.name);
-      // Retry after a delay
-      setTimeout(() => {
-        this.inputElement = this.querySelector<HTMLInputElement>('input');
-        if (this.inputElement) {
-          console.log('✅ Input element found on retry for:', this.props.name);
-          this.bindEvents();
-        }
+      console.warn('❌ Input element not found for:', this.props.name);
+      // Retry with longer delay
+      this.setTimeout(() => {
+        this.initializeInput();
       }, 100);
       return;
     }
 
-    console.log('🔧 Input element found, setting up events for:', this.props.name);
+    console.log('✅ Input element found, initializing:', this.props.name);
+    
+    // Set initial value from props or current value
+    const initialValue = this.props.value || this.currentValue || '';
+    if (initialValue) {
+      this.inputElement.value = initialValue;
+      this.currentValue = initialValue;
+    }
+
     this.bindEvents();
+    this.isInitialized = true;
   }
 
+  /**
+   * ENHANCED: More reliable event binding
+   */
   private bindEvents(): void {
     if (!this.inputElement) return;
 
-    // Set initial value
-    this.currentValue = this.props.value || '';
-    if (this.currentValue) {
-      this.inputElement.value = this.currentValue;
-    }
+    console.log('🔧 Binding events for input:', this.props.name);
 
-    // CRITICAL: Use multiple event types for maximum compatibility
-    const events = ['input', 'keyup', 'change', 'paste'];
+    // ENHANCED: Multiple event types for maximum compatibility
+    const inputEvents = ['input', 'keyup', 'change'];
+    const pasteEvents = ['paste'];
     
-    events.forEach(eventType => {
-      this.inputElement!.addEventListener(eventType, (e) => {
-        // Small delay for paste events
-        const delay = eventType === 'paste' ? 10 : 0;
-        
-        setTimeout(() => {
-          const target = e.target as HTMLInputElement;
-          const newValue = target.value;
-          
-          if (newValue !== this.currentValue) {
-            this.currentValue = newValue;
-            console.log(`📝 ${this.props.name} ${eventType}:`, newValue ? 'HAS_VALUE' : 'EMPTY', `(${newValue.length} chars)`);
-            
-            if (this.props.onChange) {
-              this.props.onChange(this.currentValue, e);
-            }
-          }
-        }, delay);
+    // Handle input/keyup/change events
+    inputEvents.forEach(eventType => {
+      this.addEventListener(this.inputElement!, eventType, (e) => {
+        this.handleInputChange(e);
       });
     });
 
-    // Handle blur and focus events
-    if (this.props.onBlur) {
-      this.inputElement.addEventListener('blur', this.props.onBlur);
-    }
+    // Handle paste events with delay
+    pasteEvents.forEach(eventType => {
+      this.addEventListener(this.inputElement!, eventType, (e) => {
+        this.setTimeout(() => {
+          this.handleInputChange(e);
+        }, 10);
+      });
+    });
 
+    // Handle focus/blur events
     if (this.props.onFocus) {
-      this.inputElement.addEventListener('focus', this.props.onFocus);
+      this.addEventListener(this.inputElement, 'focus', this.props.onFocus);
     }
 
-    console.log('✅ All events bound for:', this.props.name);
+    if (this.props.onBlur) {
+      this.addEventListener(this.inputElement, 'blur', this.props.onBlur);
+    }
+
+    console.log('✅ Events bound successfully for:', this.props.name);
+  }
+
+  /**
+   * ENHANCED: Robust input change handling
+   */
+  private handleInputChange(event: Event): void {
+    if (!this.inputElement) return;
+
+    const target = event.target as HTMLInputElement;
+    const newValue = target.value;
+    
+    // Only trigger onChange if value actually changed
+    if (newValue !== this.currentValue) {
+      this.currentValue = newValue;
+      
+      const valueMask = newValue ? 'HAS_VALUE' : 'EMPTY';
+      console.log(`📝 Input change [${this.props.name}]: ${valueMask} (${newValue.length} chars)`);
+      
+      if (this.props.onChange) {
+        try {
+          this.props.onChange(this.currentValue, event);
+        } catch (error) {
+          console.error('❌ Error in onChange handler:', error);
+        }
+      }
+    }
   }
 
   protected onMounted(): void {
     console.log('🎯 Input mounted:', this.props.name);
-    
-    // Ensure events are set up after mount
-    setTimeout(() => {
-      if (!this.inputElement) {
-        this.setupEventListeners();
-      }
-      
-      // Set initial value if provided
-      if (this.props.value && this.inputElement) {
-        this.inputElement.value = this.props.value;
-        this.currentValue = this.props.value;
-      }
-    }, 50);
+    // Enhanced initialization will be called by setupEventListeners
   }
 
   protected onUpdated(): void {
     console.log('🔄 Input updated:', this.props.name);
     
-    // Re-setup events after update
-    setTimeout(() => {
-      this.inputElement = this.querySelector<HTMLInputElement>('input');
-      if (this.inputElement) {
-        this.bindEvents();
-      }
+    // Reset initialization flag and re-initialize
+    this.isInitialized = false;
+    this.inputElement = null;
+    
+    this.setTimeout(() => {
+      this.initializeInput();
     }, 50);
   }
 
+  /**
+   * ENHANCED: Reliable value getter
+   */
   public getValue(): string {
-    // Always get the latest value from the DOM
+    // Always get the latest value from the DOM if available
     if (this.inputElement) {
-      this.currentValue = this.inputElement.value;
+      const domValue = this.inputElement.value;
+      if (domValue !== this.currentValue) {
+        this.currentValue = domValue;
+      }
     }
-    console.log(`📤 getValue for ${this.props.name}:`, this.currentValue ? 'HAS_VALUE' : 'EMPTY', `(${this.currentValue.length} chars)`);
+    
+    console.log(`📤 getValue [${this.props.name}]: ${this.currentValue ? 'HAS_VALUE' : 'EMPTY'} (${this.currentValue.length} chars)`);
     return this.currentValue;
   }
 
+  /**
+   * ENHANCED: Reliable value setter
+   */
   public setValue(value: string): void {
     this.currentValue = value;
+    
     if (this.inputElement) {
       this.inputElement.value = value;
     }
-    console.log(`📥 setValue for ${this.props.name}:`, value ? 'HAS_VALUE' : 'EMPTY', `(${value.length} chars)`);
+    
+    console.log(`📥 setValue [${this.props.name}]: ${value ? 'HAS_VALUE' : 'EMPTY'} (${value.length} chars)`);
     
     // Trigger onChange if provided
     if (this.props.onChange) {
-      this.props.onChange(value, new Event('change'));
+      try {
+        this.props.onChange(value, new Event('change'));
+      } catch (error) {
+        console.error('❌ Error in setValue onChange:', error);
+      }
     }
   }
 
+  /**
+   * Focus the input
+   */
   public focus(): void {
     if (this.inputElement) {
       this.inputElement.focus();
+    } else {
+      // Retry after initialization
+      this.setTimeout(() => {
+        if (this.inputElement) {
+          this.inputElement.focus();
+        }
+      }, 100);
     }
+  }
+
+  /**
+   * ENHANCED: Clear any error styling
+   */
+  public clearError(): void {
+    if (this.inputElement) {
+      this.inputElement.className = this.inputElement.className.replace(/border-red-300/g, 'border-gray-300');
+    }
+  }
+
+  /**
+   * ENHANCED: Set error styling
+   */
+  public setError(error: string): void {
+    if (this.inputElement) {
+      this.inputElement.className = this.inputElement.className.replace(/border-gray-300/g, 'border-red-300');
+    }
+    // Update the component to show error
+    this.update({ error });
   }
 
   public render(): string {
