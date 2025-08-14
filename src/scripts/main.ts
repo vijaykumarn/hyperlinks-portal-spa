@@ -330,6 +330,9 @@ async function initializeApp(): Promise<void> {
 
     // Create app instance
     app = new App(config);
+    
+    // Expose app on window for router access
+    (window as any).__APP__ = app;
 
     // Initialize the app
     await app.init();
@@ -677,8 +680,8 @@ async function bootstrap(): Promise<void> {
     // Check for OAuth2 callback first
     const isOAuth2Callback = await handleOAuth2Callback();
     if (isOAuth2Callback) {
-      console.log('🔗 OAuth2 callback handled, app will reload');
-      return;
+      console.log('🔗 OAuth2 callback handled successfully, continuing app initialization');
+      // Don't return here - continue with app initialization
     }
     
     // Check for OAuth2 success state
