@@ -24,7 +24,7 @@ export class Input extends Component<InputProps> {
   private isInitialized = false;
 
   protected setupEventListeners(): void {
-    // Use enhanced timing for better reliability
+    // Use enhanced setTimeout with automatic cleanup
     this.setTimeout(() => {
       this.initializeInput();
     }, 50);

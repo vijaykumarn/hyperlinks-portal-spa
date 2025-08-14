@@ -1,5 +1,4 @@
 // src/core/cleanup/CleanupManager.ts - NEW FILE
-// Memory leak prevention without touching existing components
 
 /**
  * Resource cleanup registration
@@ -13,7 +12,7 @@ interface CleanupResource {
 
 /**
  * CleanupManager - Automatic resource management
- * This is a NEW utility that existing components can optionally adopt
+ * Prevents memory leaks by tracking and cleaning up resources
  */
 export class CleanupManager {
   private resources: Map<string, CleanupResource> = new Map();
@@ -58,6 +57,36 @@ export class CleanupManager {
   }
 
   /**
+   * Register a document event listener with automatic cleanup
+   */
+  public addDocumentEventListener<K extends keyof DocumentEventMap>(
+    type: K,
+    listener: (this: Document, ev: DocumentEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): string {
+    document.addEventListener(type, listener, options);
+    
+    return this.register(() => {
+      document.removeEventListener(type, listener, options);
+    }, 'event');
+  }
+
+  /**
+   * Register a window event listener with automatic cleanup
+   */
+  public addWindowEventListener<K extends keyof WindowEventMap>(
+    type: K,
+    listener: (this: Window, ev: WindowEventMap[K]) => any,
+    options?: boolean | AddEventListenerOptions
+  ): string {
+    window.addEventListener(type, listener, options);
+    
+    return this.register(() => {
+      window.removeEventListener(type, listener, options);
+    }, 'event');
+  }
+
+  /**
    * Register a timer with automatic cleanup
    */
   public setTimeout(callback: () => void, delay: number): string {
@@ -83,16 +112,22 @@ export class CleanupManager {
    * Register a state subscription with automatic cleanup
    */
   public subscribeToState<T>(
+    stateManager: any,
     selector: (state: any) => T,
     callback: (value: T, previousValue: T) => void
   ): string {
-    // This would integrate with your StateManager
-    // For now, just a placeholder that existing code can use
-    const unsubscribe = () => {
-      // Actual unsubscribe logic would go here
-    };
+    const unsubscribe = stateManager.subscribe(selector, callback);
 
     return this.register(unsubscribe, 'subscription');
+  }
+
+  /**
+   * Register a component for cleanup
+   */
+  public registerComponent(component: { unmount: () => void }): string {
+    return this.register(() => {
+      component.unmount();
+    }, 'component');
   }
 
   /**
