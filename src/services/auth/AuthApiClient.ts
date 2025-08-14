@@ -1,47 +1,29 @@
-// src/services/auth/AuthApiClient.ts - FIXED UNUSED IMPORTS
+// src/services/auth/AuthApiClient.ts - PHASE 3: REFACTORED TO USE UNIFIED CLIENT
 
-import { HttpClient } from '../core/HttpClient';
-import { ApiConfig } from '../core/ApiConfig';
-import type { ApiResponse } from '../core/HttpClient';
+import { UnifiedApiClient } from '../core/UnifiedApiClient';
+import type { FrontendApiResponse } from '../core/HttpClient';
 import type {
   RegistrationRequest,
   RegistrationResponse,
   LoginRequest,
   LoginResponse,
-  // REMOVED: ForgotPasswordRequest - not used in this client
   ForgotPasswordResponse,
   ResetPasswordRequest,
-  // REMOVED: ConfirmAccountRequest - not used in this client  
   ConfirmAccountResponse,
-  // REMOVED: ResendVerificationRequest - not used in this client
   SessionInfo,
   OAuth2AuthUrlResponse,
 } from './types';
 import type { User } from '../../types/user';
 
 /**
- * Auth Server API Client
- * Handles all HTTP communication with the Spring Auth Server
+ * Auth Server API Client - Refactored to use UnifiedApiClient
+ * No more endpoint hardcoding - everything goes through ApiConfig
  */
-export class AuthApiClient extends HttpClient {
-  private apiConfig: ApiConfig;
+export class AuthApiClient {
+  private unifiedClient: UnifiedApiClient;
 
   constructor() {
-    const apiConfig = ApiConfig.getInstance();
-    const authConfig = apiConfig.getAuthServerConfig();
-    
-    super({
-      baseUrl: authConfig.baseUrl,
-      timeout: apiConfig.getRequestTimeout(),
-      withCredentials: true,
-      defaultHeaders: {
-        'Content-Type': 'application/json',
-        'X-Client-Type': 'spa',
-        'X-Service-Type': 'auth'
-      }
-    });
-
-    this.apiConfig = apiConfig;
+    this.unifiedClient = UnifiedApiClient.getInstance();
   }
 
   // =====================================
@@ -51,9 +33,7 @@ export class AuthApiClient extends HttpClient {
   /**
    * Register new user
    */
-  async register(registrationData: RegistrationRequest): Promise<ApiResponse<RegistrationResponse>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.register;
-    
+  async register(registrationData: RegistrationRequest): Promise<FrontendApiResponse<RegistrationResponse>> {
     console.log('🔐 AuthApiClient: Registering user:', {
       username: registrationData.username,
       email: registrationData.email,
@@ -62,29 +42,25 @@ export class AuthApiClient extends HttpClient {
       marketing: registrationData.marketing
     });
 
-    return this.post<RegistrationResponse>(endpoint, registrationData);
+    return this.unifiedClient.post<RegistrationResponse>('auth.register', registrationData);
   }
 
   /**
    * Confirm user account
    */
-  async confirmAccount(token: string): Promise<ApiResponse<ConfirmAccountResponse>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.confirmAccount;
-    
+  async confirmAccount(token: string): Promise<FrontendApiResponse<ConfirmAccountResponse>> {
     console.log('✅ AuthApiClient: Confirming account with token');
     
-    return this.post<ConfirmAccountResponse>(endpoint, { token });
+    return this.unifiedClient.post<ConfirmAccountResponse>('auth.confirmAccount', { token });
   }
 
   /**
    * Resend verification email
    */
-  async resendVerification(email: string): Promise<ApiResponse<{ message: string }>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.resendVerification;
-    
+  async resendVerification(email: string): Promise<FrontendApiResponse<{ message: string }>> {
     console.log('📧 AuthApiClient: Resending verification email to:', email);
     
-    return this.post<{ message: string }>(endpoint, { email });
+    return this.unifiedClient.post<{ message: string }>('auth.resendVerification', { email });
   }
 
   // =====================================
@@ -94,30 +70,35 @@ export class AuthApiClient extends HttpClient {
   /**
    * Login user
    */
-  async login(credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.login;
-    
+  async login(credentials: LoginRequest): Promise<FrontendApiResponse<LoginResponse>> {
     console.log('🔑 AuthApiClient: Logging in user:', credentials.email);
     
-    // FIXED: Send data in format expected by backend
+    // Transform to backend expected format
     const loginData = {
       login: credentials.email,
       password: credentials.password,
       rememberMe: credentials.rememberMe || false
     };
     
-    return this.post<LoginResponse>(endpoint, loginData);
+    return this.unifiedClient.post<LoginResponse>('auth.login', loginData);
   }
 
   /**
    * Logout user
    */
-  async logout(): Promise<ApiResponse<{ message: string }>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.logout;
-    
+  async logout(): Promise<FrontendApiResponse<{ message: string }>> {
     console.log('🚪 AuthApiClient: Logging out user');
     
-    return this.post<{ message: string }>(endpoint);
+    return this.unifiedClient.post<{ message: string }>('auth.logout');
+  }
+
+  /**
+   * Get current user info
+   */
+  async getCurrentUser(): Promise<FrontendApiResponse<User>> {
+    console.log('👤 AuthApiClient: Getting current user info');
+    
+    return this.unifiedClient.get<User>('auth.me');
   }
 
   // =====================================
@@ -127,34 +108,28 @@ export class AuthApiClient extends HttpClient {
   /**
    * Request password reset
    */
-  async forgotPassword(email: string): Promise<ApiResponse<ForgotPasswordResponse>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.forgotPassword;
-    
+  async forgotPassword(email: string): Promise<FrontendApiResponse<ForgotPasswordResponse>> {
     console.log('🔑 AuthApiClient: Requesting password reset for:', email);
     
-    return this.post<ForgotPasswordResponse>(endpoint, { email });
+    return this.unifiedClient.post<ForgotPasswordResponse>('auth.forgotPassword', { email });
   }
 
   /**
    * Reset password with token
    */
-  async resetPassword(resetData: ResetPasswordRequest): Promise<ApiResponse<{ message: string }>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.resetPassword;
-    
+  async resetPassword(resetData: ResetPasswordRequest): Promise<FrontendApiResponse<{ message: string }>> {
     console.log('🔐 AuthApiClient: Resetting password with token');
     
-    return this.post<{ message: string }>(endpoint, resetData);
+    return this.unifiedClient.post<{ message: string }>('auth.resetPassword', resetData);
   }
 
   /**
    * Confirm password reset token validity
    */
-  async confirmPasswordToken(token: string): Promise<ApiResponse<{ valid: boolean; message: string }>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.confirmPasswordToken;
-    
+  async confirmPasswordToken(token: string): Promise<FrontendApiResponse<{ valid: boolean; message: string }>> {
     console.log('🔍 AuthApiClient: Confirming password reset token');
     
-    return this.post<{ valid: boolean; message: string }>(endpoint, { token });
+    return this.unifiedClient.get<{ valid: boolean; message: string }>('auth.confirmPasswordToken', { token });
   }
 
   // =====================================
@@ -164,76 +139,77 @@ export class AuthApiClient extends HttpClient {
   /**
    * Get current session info
    */
-  async getSessionInfo(): Promise<ApiResponse<SessionInfo>> {
-    const endpoint = this.apiConfig.getSessionConfig().endpoints.info;
-    
+  async getSessionInfo(): Promise<FrontendApiResponse<SessionInfo>> {
     console.log('ℹ️ AuthApiClient: Getting session info');
     
-    return this.get<SessionInfo>(endpoint);
+    return this.unifiedClient.get<SessionInfo>('session.info');
   }
 
   /**
    * Get all user sessions
    */
-  async getAllSessions(): Promise<ApiResponse<SessionInfo[]>> {
-    const endpoint = this.apiConfig.getSessionConfig().endpoints.all;
-    
+  async getAllSessions(): Promise<FrontendApiResponse<SessionInfo[]>> {
     console.log('📋 AuthApiClient: Getting all sessions');
     
-    return this.get<SessionInfo[]>(endpoint);
+    return this.unifiedClient.get<SessionInfo[]>('session.all');
   }
 
   /**
    * Invalidate all sessions
    */
-  async invalidateAllSessions(): Promise<ApiResponse<{ message: string; invalidatedCount: number }>> {
-    const endpoint = this.apiConfig.getSessionConfig().endpoints.invalidateAll;
-    
+  async invalidateAllSessions(): Promise<FrontendApiResponse<{ message: string; invalidatedCount: number }>> {
     console.log('🗑️ AuthApiClient: Invalidating all sessions');
     
-    return this.post<{ message: string; invalidatedCount: number }>(endpoint);
+    return this.unifiedClient.post<{ message: string; invalidatedCount: number }>('session.invalidateAll');
   }
 
   /**
-   * Validate current session - FIXED TO MATCH BACKEND RESPONSE FORMAT
+   * Invalidate specific session
    */
-  async validateSession(): Promise<ApiResponse<{ 
+  async invalidateSpecificSession(sessionId: string): Promise<FrontendApiResponse<{ message: string }>> {
+    console.log('🗑️ AuthApiClient: Invalidating session:', sessionId);
+    
+    return this.unifiedClient.delete<{ message: string }>('session.invalidateSpecific', { sessionId });
+  }
+
+  /**
+   * Validate current session
+   */
+  async validateSession(): Promise<FrontendApiResponse<{ 
     authenticated: boolean; 
     valid: boolean; 
     userId?: string; 
     email?: string;
-    user?: User; // Some endpoints might return full user object
+    user?: User;
   }>> {
-    const endpoint = this.apiConfig.getSessionConfig().endpoints.validate;
-    
     console.log('✅ AuthApiClient: Validating session');
     
-    // FIXED: Use GET method instead of POST for validation
-    return this.get<{ 
+    return this.unifiedClient.get<{ 
       authenticated: boolean; 
       valid: boolean; 
       userId?: string; 
       email?: string;
       user?: User;
-    }>(endpoint);
+    }>('session.validate');
   }
 
-    /**
-   * Simple session check - NEW ENDPOINT
+  /**
+   * Simple session check
    */
-  async checkSession(): Promise<ApiResponse<{ 
+  async checkSession(): Promise<FrontendApiResponse<{ 
     authenticated: boolean; 
     sessionId?: string;
+    hasSession: boolean;
+    principal?: string;
   }>> {
-    // Add this endpoint to your API config
-    const endpoint = '/api/session/check';
-    
     console.log('🔍 AuthApiClient: Checking session');
     
-    return this.get<{ 
+    return this.unifiedClient.get<{ 
       authenticated: boolean; 
       sessionId?: string;
-    }>(endpoint);
+      hasSession: boolean;
+      principal?: string;
+    }>('session.check');
   }
 
   // =====================================
@@ -243,17 +219,32 @@ export class AuthApiClient extends HttpClient {
   /**
    * Get Google OAuth2 authorization URL
    */
-  async getGoogleAuthUrl(redirectUrl?: string): Promise<ApiResponse<OAuth2AuthUrlResponse>> {
-    const endpoint = this.apiConfig.getAuthServerConfig().endpoints.oauth2GoogleAuthUrl;
-    const params: Record<string, string> = {};
-    
-    if (redirectUrl) {
-      params.redirectUrl = redirectUrl;
-    }
-    
+  async getGoogleAuthUrl(redirectUrl?: string): Promise<FrontendApiResponse<OAuth2AuthUrlResponse>> {
     console.log('🔗 AuthApiClient: Getting Google OAuth2 URL');
     
-    return this.get<OAuth2AuthUrlResponse>(endpoint, { params });
+    const params = redirectUrl ? { redirectUrl } : undefined;
+    return this.unifiedClient.get<OAuth2AuthUrlResponse>('auth.oauth2GoogleAuthUrl', params);
+  }
+
+  // =====================================
+  // SECURITY METHODS
+  // =====================================
+
+  /**
+   * Get CSRF token
+   */
+  async getCsrfToken(): Promise<FrontendApiResponse<{
+    token: string;
+    parameterName: string;
+    headerName: string;
+  }>> {
+    console.log('🔒 AuthApiClient: Getting CSRF token');
+    
+    return this.unifiedClient.get<{
+      token: string;
+      parameterName: string;
+      headerName: string;
+    }>('security.csrfToken');
   }
 
   // =====================================
@@ -263,23 +254,131 @@ export class AuthApiClient extends HttpClient {
   /**
    * Health check for auth server
    */
-  async healthCheck(): Promise<ApiResponse<{ status: string; timestamp: number }>> {
+  async healthCheck(): Promise<FrontendApiResponse<{ status: string; timestamp: number }>> {
     console.log('❤️ AuthApiClient: Health check');
     
-    return this.get<{ status: string; timestamp: number }>('/api/health');
+    return this.unifiedClient.get<{ status: string; timestamp: number }>('auth.health');
   }
 
   /**
-   * Get API configuration
+   * Get comprehensive client stats
    */
-  getApiConfig(): ApiConfig {
-    return this.apiConfig;
+  getClientStats(): {
+    unifiedClient: any;
+    endpointsUsed: string[];
+  } {
+    return {
+      unifiedClient: this.unifiedClient.getStats(),
+      endpointsUsed: [
+        // Authentication
+        'auth.register',
+        'auth.login',
+        'auth.logout',
+        'auth.me',
+        
+        // Password management
+        'auth.forgotPassword',
+        'auth.resetPassword',
+        'auth.confirmPasswordToken',
+        
+        // Account verification
+        'auth.confirmAccount',
+        'auth.resendVerification',
+        
+        // OAuth2
+        'auth.oauth2GoogleAuthUrl',
+        
+        // Session management
+        'session.info',
+        'session.all',
+        'session.invalidateAll',
+        'session.invalidateSpecific',
+        'session.validate',
+        'session.check',
+        
+        // Security
+        'security.csrfToken',
+        
+        // Health
+        'auth.health'
+      ]
+    };
   }
 
   /**
-   * Update base URL (useful for testing)
+   * Test all auth endpoints connectivity
    */
-  updateBaseUrl(baseUrl: string): void {
-    this.setBaseUrl(baseUrl);
+  async testConnectivity(): Promise<{
+    reachable: boolean;
+    latency?: number;
+    error?: string;
+  }> {
+    try {
+      const startTime = Date.now();
+      const response = await this.healthCheck();
+      const latency = Date.now() - startTime;
+      
+      return {
+        reachable: response.success,
+        latency,
+        error: response.success ? undefined : response.error
+      };
+    } catch (error) {
+      return {
+        reachable: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Batch validation of multiple endpoints
+   */
+  async validateEndpoints(): Promise<{
+    valid: number;
+    invalid: string[];
+    total: number;
+  }> {
+    const stats = this.getClientStats();
+    const results = {
+      valid: 0,
+      invalid: [] as string[],
+      total: stats.endpointsUsed.length
+    };
+
+    // This would ideally test each endpoint, but for now we'll just validate they exist in config
+    const apiConfig = this.unifiedClient['apiConfig']; // Access private property for validation
+    
+    stats.endpointsUsed.forEach(endpointKey => {
+      if (apiConfig && apiConfig.hasEndpoint(endpointKey)) {
+        results.valid++;
+      } else {
+        results.invalid.push(endpointKey);
+      }
+    });
+
+    return results;
+  }
+
+  /**
+   * Get auth server specific health
+   */
+  async getServerHealth(): Promise<{
+    server: 'auth';
+    healthy: boolean;
+    latency?: number;
+    error?: string;
+    circuitBreakerState?: string;
+  }> {
+    const unifiedStats = this.unifiedClient.getStats();
+    const healthResult = await this.testConnectivity();
+    
+    return {
+      server: 'auth',
+      healthy: healthResult.reachable,
+      latency: healthResult.latency,
+      error: healthResult.error,
+      circuitBreakerState: unifiedStats.circuitBreakers.auth?.state || 'CLOSED'
+    };
   }
 }

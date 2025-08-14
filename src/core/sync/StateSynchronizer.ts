@@ -65,7 +65,7 @@ export class StateSynchronizer {
     };
 
     // Subscribe to state manager
-    const unsubscribe = this.stateManager.subscribe(selector, (value: T, previousValue: T) => {
+    this.stateManager.subscribe(selector, (value: T, previousValue: T) => {
       subscription.lastValue = value;
       
       try {
@@ -79,8 +79,8 @@ export class StateSynchronizer {
     this.subscriptions.set(id, subscription);
 
     // Register cleanup with component if it has cleanup manager
-    if ('cleanupManager' in component && component.cleanupManager) {
-      component.cleanupManager.register(() => {
+    if ('cleanupManager' in component && (component as any).cleanupManager) {
+      (component as any).cleanupManager.register(() => {
         this.unsubscribe(id);
       }, 'subscription');
     }

@@ -350,7 +350,7 @@ export class LoginForm extends FormComponent<LoginFormProps> {
   /**
    * Clear all error displays
    */
-  private clearAllErrors(): void {
+  public clearAllErrors(): void {
     this.updateFieldError('email');
     this.updateFieldError('password');
     this.updateGeneralError();

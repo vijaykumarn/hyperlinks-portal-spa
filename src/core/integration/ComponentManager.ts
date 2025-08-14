@@ -1,4 +1,4 @@
-// src/core/integration/Phase2Integration.ts - NEW FILE
+// src/core/integration/ComponentManager.ts - NEW FILE
 // Helper to integrate Phase 2 enhancements with existing components
 
 import { CleanupManager } from '../cleanup/CleanupManager';
@@ -10,8 +10,8 @@ import { StateManager } from '../state/StateManager';
  * Phase 2 Integration Manager
  * Helps existing components adopt new features gradually
  */
-export class Phase2Integration {
-  private static instance: Phase2Integration;
+export class ComponentManager {
+  private static instance: ComponentManager;
   private domReady: DOMReady;
   private stateSynchronizer: StateSynchronizer;
   private globalCleanupManager: CleanupManager;
@@ -22,11 +22,11 @@ export class Phase2Integration {
     this.globalCleanupManager = new CleanupManager();
   }
 
-  public static getInstance(): Phase2Integration {
-    if (!Phase2Integration.instance) {
-      Phase2Integration.instance = new Phase2Integration();
+  public static getInstance(): ComponentManager {
+    if (!ComponentManager.instance) {
+      ComponentManager.instance = new ComponentManager();
     }
-    return Phase2Integration.instance;
+    return ComponentManager.instance;
   }
 
   /**
@@ -34,7 +34,7 @@ export class Phase2Integration {
    */
   public async initialize(stateManager: StateManager): Promise<void> {
     try {
-      console.log('🔧 Phase2Integration: Initializing...');
+      console.log('🔧 ComponentManager: Initializing...');
 
       // Wait for DOM to be ready
       await this.domReady.waitForReady();
@@ -42,9 +42,9 @@ export class Phase2Integration {
       // Initialize state synchronizer
       this.stateSynchronizer.initialize(stateManager);
 
-      console.log('✅ Phase2Integration: Initialized successfully');
+      console.log('✅ ComponentManager: Initialized successfully');
     } catch (error) {
-      console.error('❌ Phase2Integration: Initialization failed:', error);
+      console.error('❌ ComponentManager: Initialization failed:', error);
       throw error;
     }
   }
@@ -91,7 +91,7 @@ export class Phase2Integration {
     return this.mountComponent(
       containerSelector,
       (container) => {
-        console.log(`🎯 Phase2Integration: Mounting form to ${containerSelector}`);
+        console.log(`🎯 ComponentManager: Mounting form to ${containerSelector}`);
         
         const formComponent = new formComponentClass({
           props
@@ -121,7 +121,7 @@ export class Phase2Integration {
     return this.mountComponent(
       containerSelector,
       (container) => {
-        console.log(`🎯 Phase2Integration: Mounting modal to ${containerSelector}`);
+        console.log(`🎯 ComponentManager: Mounting modal to ${containerSelector}`);
         
         const modalComponent = new modalComponentClass({
           props
@@ -149,7 +149,7 @@ export class Phase2Integration {
   /**
    * Helper to get modal mode from state
    */
-  private getModalModeFromState(modals: Record<string, boolean>, modalType: string): string {
+  private getModalModeFromState(modals: Record<string, boolean>, _modalType: string): string {
     // Map modal states to modes
     if (modals.login) return 'login';
     if (modals.register) return 'register';
@@ -174,7 +174,7 @@ export class Phase2Integration {
     return this.mountComponent(
       containerSelector,
       (container) => {
-        console.log(`🎯 Phase2Integration: Mounting input to ${containerSelector}`);
+        console.log(`🎯 ComponentManager: Mounting input to ${containerSelector}`);
         
         const inputComponent = new Input({
           props: inputProps
@@ -204,7 +204,7 @@ export class Phase2Integration {
     return this.mountComponent(
       containerSelector,
       (container) => {
-        console.log(`🎯 Phase2Integration: Mounting button to ${containerSelector}`);
+        console.log(`🎯 ComponentManager: Mounting button to ${containerSelector}`);
         
         const buttonComponent = new Button({
           props: buttonProps
@@ -256,7 +256,7 @@ export class Phase2Integration {
     );
     
     const successCount = results.filter(Boolean).length;
-    console.log(`🎯 Phase2Integration: Batch mount completed: ${successCount}/${results.length} successful`);
+    console.log(`🎯 ComponentManager: Batch mount completed: ${successCount}/${results.length} successful`);
     
     return results;
   }
@@ -280,7 +280,7 @@ export class Phase2Integration {
    * Emergency cleanup for all Phase 2 resources
    */
   public emergencyCleanup(): void {
-    console.warn('🚨 Phase2Integration: Performing emergency cleanup...');
+    console.warn('🚨 ComponentManager: Performing emergency cleanup...');
     
     try {
       // Cleanup global resources
@@ -289,9 +289,9 @@ export class Phase2Integration {
       // Cleanup state synchronizer
       this.stateSynchronizer.destroy();
       
-      console.log('✅ Phase2Integration: Emergency cleanup completed');
+      console.log('✅ ComponentManager: Emergency cleanup completed');
     } catch (error) {
-      console.error('❌ Phase2Integration: Emergency cleanup failed:', error);
+      console.error('❌ ComponentManager: Emergency cleanup failed:', error);
     }
   }
 
@@ -299,16 +299,16 @@ export class Phase2Integration {
    * Destroy integration manager
    */
   public destroy(): void {
-    console.log('🧹 Phase2Integration: Destroying...');
+    console.log('🧹 ComponentManager: Destroying...');
     
     try {
       // Cleanup all resources
       this.globalCleanupManager.destroy();
       this.stateSynchronizer.destroy();
       
-      console.log('✅ Phase2Integration: Destroyed successfully');
+      console.log('✅ ComponentManager: Destroyed successfully');
     } catch (error) {
-      console.error('❌ Phase2Integration: Destruction failed:', error);
+      console.error('❌ ComponentManager: Destruction failed:', error);
     }
   }
 }
@@ -330,7 +330,7 @@ export async function mountComponentEnhanced<T>(
     retryDelay?: number;
   } = {}
 ): Promise<T | null> {
-  const integration = Phase2Integration.getInstance();
+  const integration = ComponentManager.getInstance();
   
   let component: T | null = null;
   
@@ -338,7 +338,7 @@ export async function mountComponentEnhanced<T>(
     containerSelector,
     (container) => {
       component = new ComponentClass({ props });
-      if (component && 'mount' in component && typeof (component as any).mount === 'function') {
+      if (component && typeof component === 'object' && 'mount' in component && typeof (component as any).mount === 'function') {
         (component as any).mount(container);
       }
       return component;
@@ -362,7 +362,7 @@ export async function mountFormEnhanced<T>(
     retryDelay?: number;
   } = {}
 ): Promise<T | null> {
-  const integration = Phase2Integration.getInstance();
+  const integration = ComponentManager.getInstance();
   
   const success = await integration.mountForm(
     containerSelector,
@@ -388,7 +388,7 @@ export async function mountModalEnhanced<T>(
     syncWithState?: boolean;
   } = {}
 ): Promise<T | null> {
-  const integration = Phase2Integration.getInstance();
+  const integration = ComponentManager.getInstance();
   
   const success = await integration.mountModal(
     containerSelector,

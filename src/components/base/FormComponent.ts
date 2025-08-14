@@ -183,7 +183,7 @@ export abstract class FormComponent<P extends FormComponentProps = FormComponent
   /**
    * NEW: Clear all errors
    */
-  protected clearAllErrors(): void {
+  public clearAllErrors(): void {
     if (Object.keys(this.state.errors).length > 0) {
       this.setStateQuiet({ errors: {} });
     }
@@ -231,7 +231,7 @@ export abstract class FormComponent<P extends FormComponentProps = FormComponent
 
     // Also reset form inputs
     const form = this.querySelector('form');
-    if (form) {
+    if (form && form instanceof HTMLFormElement) {
       try {
         form.reset();
       } catch (error) {

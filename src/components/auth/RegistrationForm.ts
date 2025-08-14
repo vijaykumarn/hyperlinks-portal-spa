@@ -556,7 +556,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
   /**
    * Clear all error displays
    */
-  private clearAllErrors(): void {
+  public clearAllErrors(): void {
     this.updateFieldError('username');
     this.updateFieldError('email');
     this.updateFieldError('password');

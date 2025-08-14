@@ -1,151 +1,26 @@
-// src/services/ApiService.ts
+// src/services/ApiService.ts - PHASE 3: REFACTORED TO USE UNIFIED CLIENT
 
-import type { ApiResponse, UrlData, AnalyticsData } from '../types/app';
+import { UnifiedApiClient } from './core/UnifiedApiClient';
+import type { FrontendApiResponse } from './core/HttpClient';
+import type { UrlData, AnalyticsData } from '../types/app';
 import type { User } from '../types/user';
 
 /**
- * HTTP Client for real API communication
- * Handles authentication via HttpOnly cookies
- */
-class HttpClient {
-  private baseUrl: string;
-  private defaultTimeout: number = 10000;
-
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  }
-
-  /**
-   * Generic request method
-   */
-  private async request<T>(
-    method: string,
-    endpoint: string,
-    data?: any,
-    options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}${endpoint}`;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.defaultTimeout);
-
-    try {
-      const requestInit: RequestInit = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Client-Type': 'spa',
-          ...options.headers
-        },
-        credentials: 'include', // Include HttpOnly cookies
-        signal: controller.signal,
-        ...options
-      };
-
-      if (data && ['POST', 'PUT', 'PATCH'].includes(method)) {
-        requestInit.body = JSON.stringify(data);
-      }
-
-      const response = await fetch(url, requestInit);
-      clearTimeout(timeoutId);
-
-      return await this.parseResponse<T>(response);
-
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        return {
-          success: false,
-          error: 'Request timeout'
-        };
-      }
-
-      console.error(`❌ API ${method} ${endpoint} failed:`, error);
-
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error'
-      };
-    }
-  }
-
-  /**
-   * Parse fetch response
-   */
-  private async parseResponse<T>(response: Response): Promise<ApiResponse<T>> {
-    try {
-      const data = await response.json();
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: data.error || data.message || `HTTP ${response.status}`,
-          message: data.message
-        };
-      }
-
-      return {
-        success: true,
-        data: data.data || data,
-        message: data.message
-      };
-
-    } catch (parseError) {
-      return {
-        success: false,
-        error: `Failed to parse response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`
-      };
-    }
-  }
-
-  // HTTP method wrappers
-  public async get<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
-    return this.request<T>('GET', endpoint, undefined, options);
-  }
-
-  public async post<T>(endpoint: string, data?: any, options?: RequestInit): Promise<ApiResponse<T>> {
-    return this.request<T>('POST', endpoint, data, options);
-  }
-
-  public async put<T>(endpoint: string, data?: any, options?: RequestInit): Promise<ApiResponse<T>> {
-    return this.request<T>('PUT', endpoint, data, options);
-  }
-
-  public async delete<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
-    return this.request<T>('DELETE', endpoint, undefined, options);
-  }
-
-  // Configuration methods
-  public setBaseUrl(baseUrl: string): void {
-    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  }
-
-  public getBaseUrl(): string {
-    return this.baseUrl;
-  }
-
-  public setTimeout(timeout: number): void {
-    this.defaultTimeout = timeout;
-  }
-}
-
-/**
- * API Service - Business logic layer
- * Clean separation from HTTP client
+ * Business Logic API Service - Refactored to use UnifiedApiClient
+ * Handles both authentication and business operations through unified client
  */
 export class ApiService {
   private static instance: ApiService;
-  private httpClient: HttpClient;
+  private unifiedClient: UnifiedApiClient;
 
-  private constructor(config: { baseUrl: string }) {
-    this.httpClient = new HttpClient(config.baseUrl);
-    console.log(`🔗 API Service initialized for ${config.baseUrl}`);
+  private constructor() {
+    this.unifiedClient = UnifiedApiClient.getInstance();
+    console.log('🔗 ApiService: Initialized with unified client architecture');
   }
 
-  public static initialize(config: { baseUrl: string }): ApiService {
+  public static initialize(): ApiService {
     if (!ApiService.instance) {
-      ApiService.instance = new ApiService(config);
+      ApiService.instance = new ApiService();
     }
     return ApiService.instance;
   }
@@ -158,68 +33,112 @@ export class ApiService {
   }
 
   // =====================================
-  // AUTHENTICATION METHODS
+  // AUTHENTICATION METHODS (using auth server)
   // =====================================
 
   /**
    * Login user
    */
-  public async login(email: string, password: string): Promise<ApiResponse<{
+  public async login(email: string, password: string): Promise<FrontendApiResponse<{
     user: User;
     message: string;
   }>> {
-    return this.httpClient.post('/auth/login', { email, password });
+    console.log('🔐 ApiService: Login request for:', email);
+    
+    return this.unifiedClient.post('auth.login', {
+      login: email,
+      password,
+      rememberMe: false
+    });
   }
 
   /**
    * Logout user
    */
-  public async logout(): Promise<ApiResponse<{ message: string }>> {
-    return this.httpClient.post('/auth/logout');
+  public async logout(): Promise<FrontendApiResponse<{ message: string }>> {
+    console.log('🚪 ApiService: Logout request');
+    
+    return this.unifiedClient.post('auth.logout');
   }
 
   /**
    * Get current user (check authentication status)
    */
-  public async getCurrentUser(): Promise<ApiResponse<User>> {
-    return this.httpClient.get('/auth/me');
+  public async getCurrentUser(): Promise<FrontendApiResponse<User>> {
+    console.log('👤 ApiService: Get current user request');
+    
+    return this.unifiedClient.get('auth.me');
   }
 
   // =====================================
-  // URL MANAGEMENT METHODS
+  // URL MANAGEMENT METHODS (using resource server)
   // =====================================
 
   /**
    * Shorten a URL
    */
-  public async shortenUrl(originalUrl: string): Promise<ApiResponse<{
+  public async shortenUrl(originalUrl: string): Promise<FrontendApiResponse<{
     shortCode: string;
     fullShortUrl: string;
   }>> {
-    return this.httpClient.post('/urls/shorten', { originalUrl });
+    console.log('🔗 ApiService: Shorten URL request for:', originalUrl);
+    
+    // Validate URL before sending
+    const validation = this.validateUrl(originalUrl);
+    if (!validation.isValid) {
+      return {
+        success: false,
+        error: validation.error || 'Invalid URL format',
+        status: 400
+      };
+    }
+
+    return this.unifiedClient.post('resource.shortenUrl', { originalUrl });
   }
 
   /**
    * Resolve a short URL
    */
-  public async resolveUrl(shortCode: string): Promise<ApiResponse<{
+  public async resolveUrl(shortCode: string): Promise<FrontendApiResponse<{
     originalUrl: string;
   }>> {
-    return this.httpClient.get(`/urls/resolve/${shortCode}`);
+    console.log('🔍 ApiService: Resolve URL request for shortCode:', shortCode);
+    
+    if (!shortCode || shortCode.trim().length === 0) {
+      return {
+        success: false,
+        error: 'Short code is required',
+        status: 400
+      };
+    }
+
+    return this.unifiedClient.get('resource.resolveUrl', undefined, { shortCode });
   }
 
   /**
    * Get user's URLs
    */
-  public async getUserUrls(): Promise<ApiResponse<UrlData[]>> {
-    return this.httpClient.get('/urls/user');
+  public async getUserUrls(): Promise<FrontendApiResponse<UrlData[]>> {
+    console.log('📋 ApiService: Get user URLs request');
+    
+    return this.unifiedClient.get('resource.getUserUrls');
   }
 
   /**
    * Delete a URL
    */
-  public async deleteUrl(urlId: string): Promise<ApiResponse<{ message: string }>> {
-    return this.httpClient.delete(`/urls/${urlId}`);
+  public async deleteUrl(urlId: string): Promise<FrontendApiResponse<{ message: string }>> {
+    console.log('🗑️ ApiService: Delete URL request for ID:', urlId);
+    
+    if (!urlId) {
+      return {
+        success: false,
+        error: 'URL ID is required',
+        status: 400
+      };
+    }
+
+    return this.unifiedClient.delete('resource.deleteUrl', { id: urlId });
   }
 
   /**
@@ -228,32 +147,208 @@ export class ApiService {
   public async updateUrl(urlId: string, updates: {
     originalUrl?: string;
     customCode?: string;
-  }): Promise<ApiResponse<UrlData>> {
-    return this.httpClient.put(`/urls/${urlId}`, updates);
+  }): Promise<FrontendApiResponse<UrlData>> {
+    console.log('✏️ ApiService: Update URL request for ID:', urlId);
+    
+    if (!urlId) {
+      return {
+        success: false,
+        error: 'URL ID is required',
+        status: 400
+      };
+    }
+
+    // Validate originalUrl if provided
+    if (updates.originalUrl) {
+      const validation = this.validateUrl(updates.originalUrl);
+      if (!validation.isValid) {
+        return {
+          success: false,
+          error: validation.error || 'Invalid URL format',
+          status: 400
+        };
+      }
+    }
+
+    return this.unifiedClient.put('resource.updateUrl', updates, { id: urlId });
   }
 
   // =====================================
-  // ANALYTICS METHODS
+  // QR CODE METHODS (using resource server)
+  // =====================================
+
+  /**
+   * Generate QR code for URL
+   */
+  public async generateQrCode(url: string, options?: {
+    size?: number;
+    format?: 'png' | 'svg';
+    errorCorrection?: 'L' | 'M' | 'Q' | 'H';
+  }): Promise<FrontendApiResponse<{
+    qrCodeId: string;
+    qrCodeUrl: string;
+    downloadUrl: string;
+  }>> {
+    console.log('📱 ApiService: Generate QR code for URL:', url);
+    
+    const validation = this.validateUrl(url);
+    if (!validation.isValid) {
+      return {
+        success: false,
+        error: validation.error || 'Invalid URL format',
+        status: 400
+      };
+    }
+
+    return this.unifiedClient.post('resource.generateQrCode', {
+      url,
+      ...options
+    });
+  }
+
+  /**
+   * Get QR code by ID
+   */
+  public async getQrCode(qrCodeId: string): Promise<FrontendApiResponse<{
+    qrCodeId: string;
+    url: string;
+    qrCodeUrl: string;
+    downloadUrl: string;
+    createdAt: number;
+  }>> {
+    console.log('📱 ApiService: Get QR code for ID:', qrCodeId);
+    
+    if (!qrCodeId) {
+      return {
+        success: false,
+        error: 'QR code ID is required',
+        status: 400
+      };
+    }
+
+    return this.unifiedClient.get('resource.getQrCode', undefined, { id: qrCodeId });
+  }
+
+  // =====================================
+  // BARCODE METHODS (using resource server)
+  // =====================================
+
+  /**
+   * Generate barcode
+   */
+  public async generateBarcode(data: string, options?: {
+    format?: 'CODE128' | 'EAN13' | 'UPC' | 'CODE39';
+    width?: number;
+    height?: number;
+  }): Promise<FrontendApiResponse<{
+    barcodeId: string;
+    barcodeUrl: string;
+    downloadUrl: string;
+  }>> {
+    console.log('📊 ApiService: Generate barcode for data:', data);
+    
+    if (!data || data.trim().length === 0) {
+      return {
+        success: false,
+        error: 'Barcode data is required',
+        status: 400
+      };
+    }
+
+    return this.unifiedClient.post('resource.generateBarcode', {
+      data,
+      ...options
+    });
+  }
+
+  /**
+   * Get barcode by ID
+   */
+  public async getBarcode(barcodeId: string): Promise<FrontendApiResponse<{
+    barcodeId: string;
+    data: string;
+    barcodeUrl: string;
+    downloadUrl: string;
+    createdAt: number;
+  }>> {
+    console.log('📊 ApiService: Get barcode for ID:', barcodeId);
+    
+    if (!barcodeId) {
+      return {
+        success: false,
+        error: 'Barcode ID is required',
+        status: 400
+      };
+    }
+
+    return this.unifiedClient.get('resource.getBarcode', undefined, { id: barcodeId });
+  }
+
+  // =====================================
+  // ANALYTICS METHODS (using resource server)
   // =====================================
 
   /**
    * Get analytics data
    */
-  public async getAnalytics(): Promise<ApiResponse<AnalyticsData>> {
-    return this.httpClient.get('/analytics');
+  public async getAnalytics(options?: {
+    timeRange?: '24h' | '7d' | '30d' | '90d' | '1y';
+    includeDetails?: boolean;
+  }): Promise<FrontendApiResponse<AnalyticsData>> {
+    console.log('📊 ApiService: Get analytics data');
+    
+    const params = options ? {
+      timeRange: options.timeRange || '30d',
+      includeDetails: String(options.includeDetails || false)
+    } : undefined;
+
+    return this.unifiedClient.get('resource.getAnalytics', params);
   }
 
   /**
    * Get URL-specific analytics
    */
-  public async getUrlAnalytics(shortCode: string): Promise<ApiResponse<{
+  public async getUrlAnalytics(shortCode: string, options?: {
+    timeRange?: '24h' | '7d' | '30d' | '90d' | '1y';
+  }): Promise<FrontendApiResponse<{
     shortCode: string;
     clicks: number;
     clickHistory: Array<{ date: string; clicks: number }>;
     referrers: Array<{ source: string; clicks: number }>;
     countries: Array<{ country: string; clicks: number }>;
+    devices: Array<{ device: string; clicks: number }>;
   }>> {
-    return this.httpClient.get(`/analytics/url/${shortCode}`);
+    console.log('📊 ApiService: Get URL analytics for shortCode:', shortCode);
+    
+    if (!shortCode) {
+      return {
+        success: false,
+        error: 'Short code is required',
+        status: 400
+      };
+    }
+
+    const params = options ? {
+      timeRange: options.timeRange || '30d'
+    } : undefined;
+
+    return this.unifiedClient.get('resource.getUrlAnalytics', params, { shortCode });
+  }
+
+  /**
+   * Get dashboard statistics
+   */
+  public async getDashboardStats(): Promise<FrontendApiResponse<{
+    totalUrls: number;
+    totalClicks: number;
+    todayClicks: number;
+    topUrls: Array<{ shortCode: string; originalUrl: string; clicks: number }>;
+    recentActivity: Array<{ date: string; clicks: number }>;
+    clicksByCountry: Array<{ country: string; clicks: number }>;
+  }>> {
+    console.log('📊 ApiService: Get dashboard statistics');
+    
+    return this.unifiedClient.get('resource.getDashboardStats');
   }
 
   // =====================================
@@ -261,16 +356,51 @@ export class ApiService {
   // =====================================
 
   /**
-   * Health check
+   * Health check both servers
    */
-  public async healthCheck(): Promise<ApiResponse<{ status: string; timestamp: number }>> {
-    return this.httpClient.get('/health');
+  public async healthCheck(): Promise<FrontendApiResponse<{ 
+    auth: boolean;
+    resource: boolean;
+    overall: boolean;
+    latency: { auth?: number; resource?: number };
+  }>> {
+    console.log('❤️ ApiService: Comprehensive health check');
+    
+    try {
+      const healthResult = await this.unifiedClient.healthCheck();
+      
+      return {
+        success: true,
+        data: {
+          auth: healthResult.auth.healthy,
+          resource: healthResult.resource.healthy,
+          overall: healthResult.overall,
+          latency: {
+            auth: healthResult.auth.latency,
+            resource: healthResult.resource.latency
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Health check failed',
+        status: 503
+      };
+    }
   }
 
   /**
    * Validate URL format
    */
   public validateUrl(url: string): { isValid: boolean; error?: string } {
+    if (!url || url.trim().length === 0) {
+      return {
+        isValid: false,
+        error: 'URL is required'
+      };
+    }
+
     try {
       const urlObj = new URL(url);
       
@@ -281,11 +411,22 @@ export class ApiService {
         };
       }
       
-      if (process.env.NODE_ENV === 'production' && 
-          (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1')) {
+      // Check for localhost in production
+      if (import.meta.env.PROD && 
+          (urlObj.hostname === 'localhost' || 
+           urlObj.hostname === '127.0.0.1' || 
+           urlObj.hostname.endsWith('.local'))) {
         return {
           isValid: false,
           error: 'Localhost URLs are not allowed in production'
+        };
+      }
+
+      // Check for very long URLs
+      if (url.length > 2048) {
+        return {
+          isValid: false,
+          error: 'URL is too long (maximum 2048 characters)'
         };
       }
       
@@ -298,12 +439,130 @@ export class ApiService {
     }
   }
 
-  // Configuration methods
-  public setBaseUrl(baseUrl: string): void {
-    this.httpClient.setBaseUrl(baseUrl);
+  /**
+   * Validate short code format
+   */
+  public validateShortCode(shortCode: string): { isValid: boolean; error?: string } {
+    if (!shortCode || shortCode.trim().length === 0) {
+      return {
+        isValid: false,
+        error: 'Short code is required'
+      };
+    }
+
+    // Basic validation - adjust based on your short code format
+    if (!/^[a-zA-Z0-9_-]+$/.test(shortCode)) {
+      return {
+        isValid: false,
+        error: 'Short code contains invalid characters'
+      };
+    }
+
+    if (shortCode.length < 3 || shortCode.length > 20) {
+      return {
+        isValid: false,
+        error: 'Short code must be between 3 and 20 characters'
+      };
+    }
+
+    return { isValid: true };
   }
 
+  // Configuration methods
   public getBaseUrl(): string {
-    return this.httpClient.getBaseUrl();
+    const stats = this.unifiedClient.getStats();
+    return stats.clients.resource.baseUrl;
+  }
+
+  public setBaseUrl(_baseUrl: string): void {
+    // Update through unified client configuration
+    console.warn('⚠️ ApiService: Direct base URL setting deprecated. Update through ApiConfig instead.');
+  }
+
+  /**
+   * Get service statistics
+   */
+  public getServiceStats(): {
+    unifiedClient: any;
+    endpointsAvailable: {
+      auth: string[];
+      resource: string[];
+      session: string[];
+    };
+    connectivity: {
+      isOnline: boolean;
+      offlineQueueSize: number;
+    };
+  } {
+    const unifiedStats = this.unifiedClient.getStats();
+    
+    return {
+      unifiedClient: unifiedStats,
+      endpointsAvailable: {
+        auth: ['login', 'logout', 'me', 'register', 'forgotPassword', 'resetPassword'],
+        resource: ['shortenUrl', 'resolveUrl', 'getUserUrls', 'updateUrl', 'deleteUrl', 'generateQrCode', 'generateBarcode'],
+        session: ['validate', 'info', 'all', 'invalidateAll']
+      },
+      connectivity: {
+        isOnline: unifiedStats.isOnline,
+        offlineQueueSize: unifiedStats.offlineQueueSize
+      }
+    };
+  }
+
+  /**
+   * Test connectivity to both servers
+   */
+  public async testConnectivity(): Promise<{
+    auth: { reachable: boolean; latency?: number; error?: string };
+    resource: { reachable: boolean; latency?: number; error?: string };
+    overall: boolean;
+  }> {
+    try {
+      const healthResult = await this.unifiedClient.healthCheck();
+      
+      return {
+        auth: {
+          reachable: healthResult.auth.healthy,
+          latency: healthResult.auth.latency,
+          error: healthResult.auth.error
+        },
+        resource: {
+          reachable: healthResult.resource.healthy,
+          latency: healthResult.resource.latency,
+          error: healthResult.resource.error
+        },
+        overall: healthResult.overall
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        auth: { reachable: false, error: errorMessage },
+        resource: { reachable: false, error: errorMessage },
+        overall: false
+      };
+    }
+  }
+
+  /**
+   * Clear offline queue
+   */
+  public clearOfflineQueue(): void {
+    this.unifiedClient.clearOfflineQueue();
+  }
+
+  /**
+   * Reset circuit breakers
+   */
+  public resetCircuitBreakers(): void {
+    this.unifiedClient.resetCircuitBreakers();
+  }
+
+  /**
+   * Update configuration
+   */
+  public updateConfiguration(): void {
+    this.unifiedClient.updateConfig();
+    console.log('🔄 ApiService: Configuration updated through unified client');
   }
 }

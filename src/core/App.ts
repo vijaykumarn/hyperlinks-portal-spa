@@ -8,7 +8,8 @@ import { DOMManagerImpl } from './dom/DOMManager';
 import { PageManager } from '../pages/PageManager';
 import { SessionService } from '../services/SessionService';
 import { AuthService } from '../services/auth/AuthService';
-import { Phase2Integration } from './integration/ComponentManager'; // NEW
+import { ComponentManager } from './integration/ComponentManager';
+
 
 /**
  * Main application class - ENHANCED WITH PHASE 2 INTEGRATION
@@ -22,7 +23,7 @@ export class App implements AppLifecycle {
   private eventListeners: Array<() => void> = [];
   private sessionService: SessionService;
   private authService: AuthService;
-  private phase2Integration: Phase2Integration; // NEW
+  private componentManager: ComponentManager; // NEW
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -51,7 +52,7 @@ export class App implements AppLifecycle {
     this.authService = AuthService.getInstance();
     
     // NEW: Initialize Phase 2 integration
-    this.phase2Integration = Phase2Integration.getInstance();
+    this.componentManager = ComponentManager.getInstance();
   }
 
   /**
@@ -78,7 +79,7 @@ export class App implements AppLifecycle {
       this.setupGlobalEventListeners();
 
       // NEW: Initialize Phase 2 integration
-      await this.initializePhase2Integration();
+      await this.initializeComponentManager();
 
       // Register pages
       this.registerPages();
@@ -115,7 +116,7 @@ export class App implements AppLifecycle {
   /**
    * NEW: Initialize Phase 2 integration
    */
-  private async initializePhase2Integration(): Promise<void> {
+  private async initializeComponentManager(): Promise<void> {
     try {
       console.log('🔧 App: Initializing Phase 2 integration...');
       
@@ -124,7 +125,7 @@ export class App implements AppLifecycle {
       const stateManager = StateManager.getInstance();
       
       // Initialize Phase 2 integration with state manager
-      await this.phase2Integration.initialize(stateManager);
+      await this.componentManager.initialize(stateManager);
       
       console.log('✅ App: Phase 2 integration initialized');
     } catch (error) {
@@ -462,8 +463,8 @@ export class App implements AppLifecycle {
   /**
    * NEW: Get Phase 2 integration manager
    */
-  public getPhase2Integration(): Phase2Integration {
-    return this.phase2Integration;
+  public getComponentManager(): ComponentManager {
+    return this.componentManager;
   }
 
   /**
@@ -481,7 +482,7 @@ export class App implements AppLifecycle {
         currentPage: this.state.currentPage,
         hasSession: !!this.state.session
       },
-      phase2: this.phase2Integration.getStats(),
+      phase2: this.componentManager.getStats(),
       auth: this.authService.getAuthState(),
       session: this.sessionService.getSessionInfo()
     };
@@ -520,7 +521,7 @@ export class App implements AppLifecycle {
       }
 
       // NEW: Cleanup Phase 2 integration
-      this.phase2Integration.destroy();
+      this.componentManager.destroy();
 
       // Cleanup event listeners
       this.eventListeners.forEach(cleanup => cleanup());

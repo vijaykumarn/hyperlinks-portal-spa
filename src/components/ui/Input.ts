@@ -75,14 +75,14 @@ export class Input extends Component<InputProps> {
     
     // Handle input/keyup/change events
     inputEvents.forEach(eventType => {
-      this.addEventListener(this.inputElement!, eventType, (e) => {
+      this.inputElement!.addEventListener(eventType, (e) => {
         this.handleInputChange(e);
       });
     });
 
     // Handle paste events with delay using enhanced setTimeout
     pasteEvents.forEach(eventType => {
-      this.addEventListener(this.inputElement!, eventType, (e) => {
+      this.inputElement!.addEventListener(eventType, (e) => {
         this.setTimeout(() => {
           this.handleInputChange(e);
         }, 10);
@@ -91,11 +91,11 @@ export class Input extends Component<InputProps> {
 
     // Handle focus/blur events
     if (this.props.onFocus) {
-      this.addEventListener(this.inputElement, 'focus', this.props.onFocus);
+      this.inputElement.addEventListener('focus', this.props.onFocus);
     }
 
     if (this.props.onBlur) {
-      this.addEventListener(this.inputElement, 'blur', this.props.onBlur);
+      this.inputElement.addEventListener('blur', this.props.onBlur);
     }
 
     console.log('✅ Events bound successfully for:', this.props.name);
