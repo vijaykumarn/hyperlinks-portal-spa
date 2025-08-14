@@ -222,9 +222,6 @@ export abstract class HttpClient {
       }
 
       console.log(`🔄 ${method} ${url} (${requestId}, attempt ${attempt + 1})`);
-      console.log('🔍 Request headers:', requestConfig.headers);
-      console.log('🔍 Request body type:', typeof requestConfig.body);
-      console.log('🔍 Request body:', requestConfig.body);
 
       const response = await fetch(url, requestConfig);
       clearTimeout(timeoutId);

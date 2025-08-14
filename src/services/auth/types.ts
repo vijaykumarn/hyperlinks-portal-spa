@@ -194,3 +194,26 @@ export interface AuthError {
 
 // Export the AuthModalMode type that was missing
 export type AuthModalMode = 'login' | 'register' | 'verification' | 'closed';
+
+/**
+ * Auth event data types for better type safety
+ */
+export interface AuthEventData {
+  'registration:started': RegistrationRequest;
+  'registration:success': User;
+  'registration:error': { error: string; fieldErrors?: Record<string, string[]> };
+  'registration:failed': { error: string; fieldErrors?: Record<string, string[]> };
+  'login:started': LoginRequest;
+  'login:success': User;
+  'login:error': { error: string };
+  'login:failed': { error: string };
+  'logout:success': void;
+  'session:validated': User;
+  'session:expired': void;
+  'oauth2:started': void;
+  'oauth2:success': User;
+  'oauth2:failed': { error: string };
+  'verification:required': { email: string };
+  'verification:success': User | undefined;
+  'verification:failed': { error: string };
+}

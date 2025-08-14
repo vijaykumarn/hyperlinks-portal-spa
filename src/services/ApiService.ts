@@ -483,7 +483,7 @@ export class ApiService {
    * Get service statistics
    */
   public getServiceStats(): {
-    unifiedClient: any;
+    unifiedClient: ReturnType<UnifiedApiClient['getStats']>;
     endpointsAvailable: {
       auth: string[];
       resource: string[];

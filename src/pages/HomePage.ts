@@ -272,34 +272,42 @@ export class HomePage implements PageComponent {
   private setupAuthServiceListeners(): void {
     // Login success
     const loginSuccessListener = this.authService.addEventListener('login:success', (data) => {
-      console.log('✅ HomePage: Login successful:', data.user.email);
-      this.closeAuthModal();
-      // FIXED: Ensure proper redirect to dashboard
-      setTimeout(() => this.redirectToDashboard(), 500);
+      if (data && data.user) {
+        console.log('✅ HomePage: Login successful:', data.user.email);
+        this.closeAuthModal();
+        // FIXED: Ensure proper redirect to dashboard
+        setTimeout(() => this.redirectToDashboard(), 500);
+      }
     });
     this.eventListeners.push(() => loginSuccessListener());
 
     // Registration success
     const registrationSuccessListener = this.authService.addEventListener('registration:success', (data) => {
-      console.log('✅ HomePage: Registration successful:', data.userId);
+      if (data && data.userId) {
+        console.log('✅ HomePage: Registration successful:', data.userId);
+      }
       // Don't close modal yet - wait for verification
     });
     this.eventListeners.push(() => registrationSuccessListener());
 
     // Verification required
     const verificationRequiredListener = this.authService.addEventListener('verification:required', (data) => {
-      console.log('📧 HomePage: Verification required for:', data.email);
-      this.verificationEmail = data.email;
-      this.authModalMode = 'verification';
-      this.updateAuthModal();
+      if (data && data.email) {
+        console.log('📧 HomePage: Verification required for:', data.email);
+        this.verificationEmail = data.email;
+        this.authModalMode = 'verification';
+        this.updateAuthModal();
+      }
     });
     this.eventListeners.push(() => verificationRequiredListener());
 
     // Verification success
     const verificationSuccessListener = this.authService.addEventListener('verification:success', (data) => {
-      console.log('✅ HomePage: Verification successful');
+      if (data) {
+        console.log('✅ HomePage: Verification successful');
+      }
       this.closeAuthModal();
-      if (data.user) {
+      if (data && data.user) {
         // FIXED: Ensure proper redirect to dashboard
         setTimeout(() => this.redirectToDashboard(), 500);
       }
@@ -308,30 +316,38 @@ export class HomePage implements PageComponent {
 
     // OAuth2 success - FIXED: Proper dashboard redirect
     const oauth2SuccessListener = this.authService.addEventListener('oauth2:success', (data) => {
-      console.log('✅ HomePage: OAuth2 successful:', data.user.email);
-      this.closeAuthModal();
-      // FIXED: Ensure proper redirect to dashboard
-      setTimeout(() => this.redirectToDashboard(), 500);
+      if (data && data.user) {
+        console.log('✅ HomePage: OAuth2 successful:', data.user.email);
+        this.closeAuthModal();
+        // FIXED: Ensure proper redirect to dashboard
+        setTimeout(() => this.redirectToDashboard(), 500);
+      }
     });
     this.eventListeners.push(() => oauth2SuccessListener());
 
     // Error handlers
     const loginFailedListener = this.authService.addEventListener('login:failed', (data) => {
-      console.error('❌ HomePage: Login failed:', data.error);
+      if (data && data.error) {
+        console.error('❌ HomePage: Login failed:', data.error);
+      }
       this.isLoading = false;
       this.updateComponentsLoading();
     });
     this.eventListeners.push(() => loginFailedListener());
 
     const registrationFailedListener = this.authService.addEventListener('registration:failed', (data) => {
-      console.error('❌ HomePage: Registration failed:', data.error);
+      if (data && data.error) {
+        console.error('❌ HomePage: Registration failed:', data.error);
+      }
       this.isLoading = false;
       this.updateComponentsLoading();
     });
     this.eventListeners.push(() => registrationFailedListener());
 
     const oauth2FailedListener = this.authService.addEventListener('oauth2:failed', (data) => {
-      console.error('❌ HomePage: OAuth2 failed:', data.error);
+      if (data && data.error) {
+        console.error('❌ HomePage: OAuth2 failed:', data.error);
+      }
       this.isLoading = false;
       this.updateComponentsLoading();
     });

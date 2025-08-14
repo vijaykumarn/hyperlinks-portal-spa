@@ -212,25 +212,29 @@ export class App implements AppLifecycle {
   private setupAuthEventListeners(): void {
     // Listen for successful authentication
     const loginSuccessListener = this.authService.addEventListener('login:success', (data) => {
-      console.log('👤 App: User logged in:', data.user.email);
-      // Update app state
-      this.state.session = { 
-        user: data.user, 
-        token: '', 
-        expiresAt: Date.now() + (24 * 60 * 60 * 1000) 
-      };
+      if (data && data.user) {
+        console.log('👤 App: User logged in:', data.user.email);
+        // Update app state
+        this.state.session = { 
+          user: data.user, 
+          token: '', 
+          expiresAt: Date.now() + (24 * 60 * 60 * 1000) 
+        };
+      }
     });
     this.eventListeners.push(loginSuccessListener);
 
     // Listen for OAuth2 success
     const oauth2SuccessListener = this.authService.addEventListener('oauth2:success', (data) => {
-      console.log('🔗 App: OAuth2 login successful:', data.user.email);
-      // Update app state
-      this.state.session = { 
-        user: data.user, 
-        token: '', 
-        expiresAt: Date.now() + (24 * 60 * 60 * 1000) 
-      };
+      if (data && data.user) {
+        console.log('🔗 App: OAuth2 login successful:', data.user.email);
+        // Update app state
+        this.state.session = { 
+          user: data.user, 
+          token: '', 
+          expiresAt: Date.now() + (24 * 60 * 60 * 1000) 
+        };
+      }
     });
     this.eventListeners.push(oauth2SuccessListener);
 

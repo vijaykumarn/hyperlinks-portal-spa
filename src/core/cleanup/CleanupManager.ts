@@ -13,9 +13,11 @@ interface CleanupResource {
 /**
  * CleanupManager - Automatic resource management
  * Prevents memory leaks by tracking and cleaning up resources
+ * Uses WeakMap for object-based cleanup to prevent circular references
  */
 export class CleanupManager {
   private resources: Map<string, CleanupResource> = new Map();
+  private objectCleanup: WeakMap<object, Set<string>> = new WeakMap();
   private isDestroyed = false;
   private nextId = 1;
 
@@ -38,6 +40,45 @@ export class CleanupManager {
     });
 
     return id;
+  }
+
+  /**
+   * Register cleanup for a specific object using WeakMap
+   * This prevents circular references and allows automatic cleanup when object is garbage collected
+   */
+  public registerForObject(target: object, cleanup: () => void, type: CleanupResource['type'] = 'other'): string {
+    const id = this.register(cleanup, type);
+    
+    // Associate cleanup with object using WeakMap
+    let cleanupIds = this.objectCleanup.get(target);
+    if (!cleanupIds) {
+      cleanupIds = new Set();
+      this.objectCleanup.set(target, cleanupIds);
+    }
+    cleanupIds.add(id);
+
+    return id;
+  }
+
+  /**
+   * Cleanup all resources associated with an object
+   */
+  public cleanupForObject(target: object): number {
+    const cleanupIds = this.objectCleanup.get(target);
+    if (!cleanupIds) {
+      return 0;
+    }
+
+    let cleaned = 0;
+    for (const id of cleanupIds) {
+      if (this.cleanup(id)) {
+        cleaned++;
+      }
+    }
+
+    // Clear the WeakMap entry
+    this.objectCleanup.delete(target);
+    return cleaned;
   }
 
   /**

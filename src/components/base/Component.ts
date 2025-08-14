@@ -157,6 +157,8 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
 
     // Use enhanced cleanup if available, fallback to existing method
     if (this.cleanupManager) {
+      // Clean up using object-based cleanup for better memory management
+      this.cleanupManager.cleanupForObject(this);
       this.cleanupManager.cleanupAll();
     } else {
       this.cleanup(); // Existing cleanup method
@@ -210,7 +212,8 @@ export abstract class Component<P extends ComponentProps = ComponentProps, S ext
   ): void {
     // Try enhanced cleanup first, fallback to existing method
     if (this.cleanupManager) {
-      this.cleanupManager.register(() => {
+      // Use object-based cleanup for better memory management
+      this.cleanupManager.registerForObject(this, () => {
         element.removeEventListener(type, listener, options);
       }, 'event');
     } else {

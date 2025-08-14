@@ -434,11 +434,15 @@ function showHealthWarning(healthCheck: any): void {
  */
 function setupAuthEventListeners(): void {
   authService.addEventListener('login:success', (data) => {
-    console.log('👤 User logged in successfully:', data.user.email);
+    if (data && data.user) {
+      console.log('👤 User logged in successfully:', data.user.email);
+    }
   });
 
   authService.addEventListener('oauth2:success', (data) => {
-    console.log('🔗 OAuth2 login successful:', data.user.email);
+    if (data && data.user) {
+      console.log('🔗 OAuth2 login successful:', data.user.email);
+    }
   });
 
   authService.addEventListener('verification:success', (_data) => {
@@ -446,11 +450,15 @@ function setupAuthEventListeners(): void {
   });
 
   authService.addEventListener('registration:success', (data) => {
-    console.log('📝 User registered successfully:', data.userId);
+    if (data && data.userId) {
+      console.log('📝 User registered successfully:', data.userId);
+    }
   });
 
   authService.addEventListener('verification:required', (data) => {
-    console.log('📧 Email verification required for:', data.email);
+    if (data && data.email) {
+      console.log('📧 Email verification required for:', data.email);
+    }
   });
 
   authService.addEventListener('session:expired', () => {

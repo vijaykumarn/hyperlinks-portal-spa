@@ -361,7 +361,7 @@ export class RegistrationForm extends FormComponent<RegistrationFormProps> {
     }
   }
 
-  private collectFormData(): any {
+  private collectFormData(): RegistrationRequest {
     // Method 1: From tracked values
     let data = { ...this.formValues };
 

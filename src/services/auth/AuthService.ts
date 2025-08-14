@@ -82,7 +82,7 @@ export class AuthService {
 
       // Set loading state
       this.setAuthLoading(true);
-      this.emitEvent('registration:started', { email: registrationData.email });
+      this.emitEvent('registration:started', registrationData);
 
       // Call API
       const response = await this.authApiClient.register(registrationData);
@@ -101,8 +101,8 @@ export class AuthService {
       const { userId, email } = response.data;
 
       console.log('✅ AuthService: Registration successful:', { userId, email });
-      this.emitEvent('registration:success', { userId, email });
-      this.emitEvent('verification:required', { email, userId });
+      this.emitEvent('registration:success', { userId });
+      this.emitEvent('verification:required', { email });
 
       return {
         success: true,
@@ -171,7 +171,8 @@ export class AuthService {
         return { success: true, user };
       } else {
         // Account confirmed but no auto-login
-        this.emitEvent('verification:success', {});
+        // No user data available for this case, emit with undefined
+        this.emitEvent('verification:success');
 
         // Update registration step to complete
         this.stateManager.dispatch({
@@ -467,7 +468,7 @@ export class AuthService {
     try {
       console.log('🔗 AuthService: Initiating Google login...');
 
-      this.emitEvent('oauth2:started', { provider: 'google' });
+      this.emitEvent('oauth2:started');
 
       const result = await this.oauth2Service.initiateGoogleLogin(redirectUrl);
 
@@ -689,7 +690,7 @@ export class AuthService {
 
       // Clear local state regardless of API response
       this.clearAuthState();
-      this.emitEvent('logout:success', {});
+      this.emitEvent('logout:success');
 
       if (!response.success) {
         console.warn('⚠️ AuthService: Logout API call failed, but local state cleared:', response.error);
@@ -703,7 +704,7 @@ export class AuthService {
 
       // Still clear local state even if API call fails
       this.clearAuthState();
-      this.emitEvent('logout:success', {});
+      this.emitEvent('logout:success');
 
       return { success: true };
     }
@@ -858,7 +859,7 @@ export class AuthService {
     this.clearAuthState();
 
     if (wasAuthenticated) {
-      this.emitEvent('session:expired', {});
+      this.emitEvent('session:expired');
     }
   }
 
