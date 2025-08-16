@@ -445,7 +445,7 @@ export abstract class HttpClient {
     const startTime = Date.now();
     
     try {
-      const response = await this.get('/health', { skipRetry: true, timeout: 5000 });
+      const response = await this.get('/actuator/health', { skipRetry: true, timeout: 5000 });
       const latency = Date.now() - startTime;
       
       return {

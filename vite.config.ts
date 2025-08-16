@@ -58,7 +58,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    open: true,
+    open: false,
     // Proxy configuration for dual backend setup
     proxy: {
       // Auth Server routes
@@ -136,7 +136,7 @@ export default defineConfig({
       },
       
       // Health checks - route to both servers
-      '/api/health': {
+      '/actuator/health': {
         target: 'http://localhost:8090', // Primary health check to auth server
         changeOrigin: true,
         secure: false

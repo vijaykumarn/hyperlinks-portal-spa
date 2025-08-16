@@ -167,9 +167,9 @@ export class ApiConfig {
         baseUrl: resourceServerBaseUrl,
         endpoints: {
           // URL management
-          shortenUrl: '/api/urls/shorten',
+          shortenUrl: '/api/links',
           resolveUrl: '/api/urls/resolve',
-          getUserUrls: '/api/urls/user',
+          getUserUrls: '/api/links',
           updateUrl: '/api/urls',
           deleteUrl: '/api/urls',
           
@@ -187,7 +187,7 @@ export class ApiConfig {
           getDashboardStats: '/api/analytics/dashboard',
           
           // Health
-          health: '/api/health'
+          health: '/actuator/health'
         }
       },
       session: {
